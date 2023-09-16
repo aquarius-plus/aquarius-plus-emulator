@@ -127,6 +127,8 @@ void EspSettingsConsole::consoleTask() {
             systemUpdate();
         else if (strcasecmp(line, "updategh") == 0)
             systemUpdateGitHub();
+        else if (strcasecmp(line, "exit") == 0 || strcasecmp(line, "quit") == 0)
+            cputc(3); // Send CTRL-C
         else if (line[0])
             cprintf("Unknown command\n");
 
@@ -207,15 +209,15 @@ void EspSettingsConsole::creadline(char *buf, size_t max_len, bool is_password) 
 }
 
 void EspSettingsConsole::showHelp() {
-    cprintf("help    |this help\n");
-    cprintf("wifi    |show WiFi status\n");
-    cprintf("wifi set|set WiFi network\n");
-    cprintf("date    |show current time/date\n");
-    cprintf("tz      |show current time zone\n");
-    cprintf("tz set  |set time zone\n");
-    cprintf("update  |system update from SD card\n");
-    cprintf("updategh|system update from GitHub\n");
-    cprintf("ctrl-c  |exit to BASIC\n");
+    cprintf("help     |this help\n");
+    cprintf("wifi     |show WiFi status\n");
+    cprintf("wifi set |set WiFi network\n");
+    cprintf("date     |show current time/date\n");
+    cprintf("tz       |show current time zone\n");
+    cprintf("tz set   |set time zone\n");
+    cprintf("update   |system update from SD card\n");
+    cprintf("updategh |system update from GitHub\n");
+    cprintf("exit/quit|exit to BASIC (or CTRL-C)\n");
 }
 
 void EspSettingsConsole::wifiStatus() {
@@ -494,6 +496,27 @@ done:
 #endif
 }
 
+#ifndef EMULATOR
+// trim from left
+static inline std::string ltrim(const std::string &s, const char *t = " \t\n\r\f\v") {
+    std::string result = s;
+    result.erase(0, result.find_first_not_of(t));
+    return result;
+}
+
+// trim from right
+static inline std::string rtrim(const std::string &s, const char *t = " \t\n\r\f\v") {
+    std::string result = s;
+    result.erase(result.find_last_not_of(t) + 1);
+    return result;
+}
+
+// trim from left & right
+static inline std::string trim(const std::string &s, const char *t = " \t\n\r\f\v") {
+    return ltrim(rtrim(s, t), t);
+}
+#endif
+
 void EspSettingsConsole::systemUpdateGitHub() {
 #ifndef EMULATOR
     cprintf("Enter firmware version (GitHub tag, e.g. V0.7):");
@@ -502,7 +525,16 @@ void EspSettingsConsole::systemUpdateGitHub() {
     if (new_session)
         return;
 
-    auto url = std::string("https://github.com/fvdhoef/aquarius-plus/releases/download/") + str + "/aquarius-plus.bin";
+    auto trimmedStr = trim(str);
+    if (trimmedStr.empty()) {
+        cprintf("Invalid name, aborting.\n");
+        return;
+    }
+    if (trimmedStr[0] == 'v') {
+        trimmedStr[0] = 'V';
+    }
+
+    auto url = std::string("https://github.com/fvdhoef/aquarius-plus/releases/download/") + trimmedStr + "/aquarius-plus.bin";
 
     esp_http_client_config_t http_config = {
         .url                 = url.c_str(),
