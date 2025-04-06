@@ -6,10 +6,18 @@
 class AY8910 {
 public:
     AY8910();
-    void    reset();
-    void    writeReg(uint8_t r, uint8_t v);
-    uint8_t readReg(uint8_t r);
-    void    render(uint16_t abc[3]);
+    void reset();
+
+    void write(uint8_t addr, uint8_t data) {
+        if (addr & 1) {
+            regIdx = data & 0xF;
+        } else {
+            writeReg(regIdx, data);
+        }
+    }
+    uint8_t read() { return readReg(regIdx); }
+
+    void render(uint16_t abc[3]);
 
     void dbgDrawIoRegs();
 
@@ -34,6 +42,7 @@ private:
         bool     holding;
     };
 
+    uint8_t       regIdx = 0;
     uint8_t       regs[16];      // Registers
     ToneGenerator toneGen[3];    // Tone generator state
     Envelope      envelope;      // Envelope generator state
@@ -41,4 +50,7 @@ private:
     uint8_t       noiseCnt;      // Noise period counter
     uint32_t      rng;           // RNG LFSR state
     uint8_t       value[3];      // Current channel value (either 0 or 1)
+
+    void    writeReg(uint8_t r, uint8_t v);
+    uint8_t readReg(uint8_t r);
 };

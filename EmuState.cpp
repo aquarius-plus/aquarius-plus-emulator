@@ -31,8 +31,6 @@ void EmuState::coldReset() {
     bankRegs[1]           = 33;
     bankRegs[2]           = 34;
     bankRegs[3]           = 19;
-    ay1Addr               = 0;
-    ay2Addr               = 0;
     sysCtrlDisableExt     = false;
     sysCtrlAyDisable      = false;
     sysCtrlTurbo          = false;
@@ -368,15 +366,15 @@ uint8_t EmuState::ioRead(uint16_t addr, bool triggerBp) {
     switch (addr8) {
         case 0xF6:
         case 0xF7:
-            return (emuState.sysCtrlAyDisable)
-                       ? 0xFF
-                       : emuState.ay1.readReg(emuState.ay1Addr);
+            if (!emuState.sysCtrlAyDisable)
+                return emuState.ay1.read();
+            return 0xFF;
 
         case 0xF8:
         case 0xF9:
-            return (emuState.sysCtrlAyDisable || emuState.sysCtrlDisableExt)
-                       ? 0xFF
-                       : emuState.ay2.readReg(emuState.ay2Addr);
+            if (!(emuState.sysCtrlAyDisable || emuState.sysCtrlDisableExt))
+                return emuState.ay2.read();
+            return 0xFF;
 
         case 0xFA: return emuState.kbBufRead();
         case 0xFB: return (
@@ -444,23 +442,15 @@ void EmuState::ioWrite(uint16_t addr, uint8_t data, bool triggerBp) {
 
     switch (addr8) {
         case 0xF6:
-            if (!emuState.sysCtrlAyDisable && emuState.ay1Addr < 14)
-                emuState.ay1.writeReg(emuState.ay1Addr, data);
-            return;
-
         case 0xF7:
             if (!emuState.sysCtrlAyDisable)
-                emuState.ay1Addr = data;
+                emuState.ay1.write(addr8, data);
             return;
 
         case 0xF8:
-            if (!(emuState.sysCtrlAyDisable || emuState.sysCtrlDisableExt) && emuState.ay2Addr < 14)
-                emuState.ay2.writeReg(emuState.ay2Addr, data);
-            return;
-
         case 0xF9:
             if (!(emuState.sysCtrlAyDisable || emuState.sysCtrlDisableExt))
-                emuState.ay2Addr = data;
+                emuState.ay2.write(addr8, data);
             return;
 
         case 0xFB:
