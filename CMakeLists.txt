@@ -18,53 +18,58 @@ add_executable(${CMAKE_PROJECT_NAME})
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     .
-    imgui
-    lodepng
-    UI
-    VFS
-    libz80
-    FpgaCores
-    FpgaCores/AquariusPlus
+    lib
+
+    fpga_cores/aqplus
+
+    esp32
+    esp32/FpgaCores
+    esp32/FpgaCores/AquariusPlus
+    esp32/HID
+    esp32/VFS
+
+    external/cjson
+    external/imgui
+    external/libz80
+    external/lodepng
+    external/tinyfiledialogs
 )
 
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
-    Keyboard.cpp
-    UartProtocol.cpp
+    AssemblyListing.cpp
     Audio.cpp
-    AY8910.cpp
     Config.cpp
     EmuState.cpp
     main.cpp
-    tinyfiledialogs.cpp
+    MemoryEditor.cpp
+    UI.cpp
     Version.cpp
-    Video.cpp
-    Common.cpp
+    
+    lib/Common.cpp
+    
+    fpga_cores/aqplus/AY8910.cpp
+    fpga_cores/aqplus/Video.cpp
 
-    cJSON.c
-
-    UI/AssemblyListing.cpp
-    UI/MemoryEditor.cpp
-    UI/UI.cpp
-
-    VFS/EspVFS.cpp
-    VFS/HttpVFS.cpp
-    VFS/SDCardVFS.cpp
-    VFS/TcpVFS.cpp
-
-    FpgaCores/FpgaCore.cpp
-    FpgaCores/AquariusPlus/CoreAquariusPlus.cpp
-
-    libz80/z80.c
-
-    imgui/imgui.cpp
-    imgui/imgui_demo.cpp
-    imgui/imgui_draw.cpp
-    imgui/imgui_impl_sdl2.cpp
-    imgui/imgui_impl_sdlrenderer2.cpp
-    imgui/imgui_tables.cpp
-    imgui/imgui_widgets.cpp
-
-    lodepng/lodepng.cpp
+    esp32/FpgaCores/AquariusPlus/CoreAquariusPlus.cpp
+    esp32/FpgaCores/FpgaCore.cpp
+    esp32/Keyboard.cpp
+    esp32/UartProtocol.cpp
+    esp32/VFS/EspVFS.cpp
+    esp32/VFS/HttpVFS.cpp
+    esp32/VFS/SDCardVFS.cpp
+    esp32/VFS/TcpVFS.cpp
+    
+    external/cjson/cJSON.c
+    external/imgui/imgui_demo.cpp
+    external/imgui/imgui_draw.cpp
+    external/imgui/imgui_impl_sdl2.cpp
+    external/imgui/imgui_impl_sdlrenderer2.cpp
+    external/imgui/imgui_tables.cpp
+    external/imgui/imgui_widgets.cpp
+    external/imgui/imgui.cpp
+    external/libz80/z80.c
+    external/lodepng/lodepng.cpp
+    external/tinyfiledialogs/tinyfiledialogs.cpp
 )
 
 if (LINUX)
