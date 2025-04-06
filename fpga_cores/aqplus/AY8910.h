@@ -11,6 +11,10 @@ public:
     uint8_t readReg(uint8_t r);
     void    render(uint16_t abc[3]);
 
+    void dbgDrawIoRegs();
+
+    uint8_t portRdData[2] = {0xFF, 0xFF};
+
 private:
     struct ToneGenerator {
         uint16_t period;
@@ -37,6 +41,4 @@ private:
     uint8_t       noiseCnt;      // Noise period counter
     uint32_t      rng;           // RNG LFSR state
     uint8_t       value[3];      // Current channel value (either 0 or 1)
-
-    friend class UIInt;
 };

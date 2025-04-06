@@ -47,8 +47,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     
     lib/Common.cpp
     
+    fpga_cores/aqplus/AqpVideo.cpp
     fpga_cores/aqplus/AY8910.cpp
-    fpga_cores/aqplus/Video.cpp
 
     esp32/FpgaCores/AquariusPlus/CoreAquariusPlus.cpp
     esp32/FpgaCores/FpgaCore.cpp

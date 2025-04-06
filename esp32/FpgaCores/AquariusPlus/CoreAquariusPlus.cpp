@@ -212,8 +212,8 @@ public:
     }
 
     void aqpUpdateHandCtrl(uint8_t hctrl1, uint8_t hctrl2) {
-        emuState.handCtrl1 = hctrl1;
-        emuState.handCtrl2 = hctrl2;
+        emuState.ay1.portRdData[0] = hctrl1;
+        emuState.ay1.portRdData[1] = hctrl2;
     }
 
     void aqpSetVideoMode(uint8_t mode) {

@@ -233,10 +233,10 @@ public:
         uint8_t handCtrl1_merged = handCtrl1 & handCtrl_gameCtrl;
 
         if (prevHandCtrl1 != handCtrl1_merged || prevHandCtrl2 != handCtrl2) {
-            emuState.handCtrl1 = handCtrl1_merged;
-            emuState.handCtrl2 = handCtrl2;
-            prevHandCtrl1      = handCtrl1_merged;
-            prevHandCtrl2      = handCtrl2;
+            emuState.ay1.portRdData[0] = handCtrl1_merged;
+            emuState.ay1.portRdData[1] = handCtrl2;
+            prevHandCtrl1              = handCtrl1_merged;
+            prevHandCtrl2              = handCtrl2;
         }
     }
 

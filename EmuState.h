@@ -2,7 +2,7 @@
 
 #include "Common.h"
 #include "z80.h"
-#include "Video.h"
+#include "AqpVideo.h"
 #include "AY8910.h"
 #include <deque>
 
@@ -104,13 +104,11 @@ struct EmuState {
     EmuMode emuMode = Em_Running;
 
     // Emulator state
-    Z80Context z80ctx;                   // Z80 emulation core state
-    Video      video;                    // Video
-    int        lineHalfCycles    = 0;    // Half-cycles for this line
-    int        sampleHalfCycles  = 0;    // Half-cycles for this sample
-    uint8_t    keybMatrix[8]     = {0};  // Keyboard matrix (8 x 6bits)
-    uint8_t    handCtrl1         = 0xFF; // Mini-expander - Hand controller 1 state (connected to port 1 of AY-3-8910)
-    uint8_t    handCtrl2         = 0xFF; // Mini-expander - Hand controller 2 state (connected to port 2 of AY-3-8910)
+    Z80Context z80ctx;                  // Z80 emulation core state
+    AqpVideo   video;                   // Video
+    int        lineHalfCycles    = 0;   // Half-cycles for this line
+    int        sampleHalfCycles  = 0;   // Half-cycles for this sample
+    uint8_t    keybMatrix[8]     = {0}; // Keyboard matrix (8 x 6bits)
     bool       cartridgeInserted = false;
 
     // Keyboard buffer
@@ -148,19 +146,7 @@ struct EmuState {
     bool stopOnHalt = false;
 
     // IO space
-    uint8_t  videoCtrl        = 0;          // $E0   : Video control register
-    uint16_t videoScrX        = 0;          // $E1/E2: Tile map horizontal scroll register
-    uint8_t  videoScrY        = 0;          // $E3   : Tile map horizontal scroll register
-    uint8_t  videoSprSel      = 0;          // $E4   : Sprite select
-    uint16_t videoSprX[64]    = {0};        // $E5/E6: Sprite X-position
-    uint8_t  videoSprY[64]    = {0};        // $E7   : Sprite Y-position
-    uint16_t videoSprIdx[64]  = {0};        // $E8/E9: Sprite tile index
-    uint8_t  videoSprAttr[64] = {0};        // $E9   : Sprite attributes
-    uint8_t  videoPalSel      = 0;          // $EA   : Palette entry select
-    uint16_t videoPalette[64] = {0};        // $EB   : Video palette
-    uint16_t videoLine        = 0;          // $EC   : Current line number
     uint8_t  audioDAC         = 0;          // $EC   : Audio DAC sample
-    uint8_t  videoIrqLine     = 0;          // $ED   : Line number at which to generate IRQ
     uint8_t  irqMask          = 0;          // $EE   : Interrupt mask register
     uint8_t  irqStatus        = 0;          // $EF   : Interrupt status register
     uint8_t  bankRegs[4]      = {0};        // $F0-F3: Banking registers
@@ -177,10 +163,6 @@ struct EmuState {
     bool     cpmRemap              = false; // $FD<1>: Remap memory for CP/M
 
     // Memory space
-    uint8_t screenRam[2048];     // $3000-33FF: Screen RAM for text mode
-    uint8_t colorRam[2048];      // $3400-37FF: Color RAM for text mode
     uint8_t mainRam[512 * 1024]; // Main RAM
     uint8_t cartRom[16 * 1024];  // Cartridge ROM
-    uint8_t videoRam[16 * 1024]; // Video RAM
-    uint8_t charRam[2048];       // Character RAM
 };

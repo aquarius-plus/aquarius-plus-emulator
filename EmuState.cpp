@@ -9,17 +9,10 @@ EmuState emuState;
 
 EmuState::EmuState() {
     memset(emuState.keybMatrix, 0xFF, sizeof(emuState.keybMatrix));
-    emuState.handCtrl1 = 0xFF;
-    emuState.handCtrl2 = 0xFF;
 
-    memset(emuState.videoPalette, 0, sizeof(emuState.videoPalette));
-    memset(emuState.screenRam, 0, sizeof(emuState.screenRam));
-    memset(emuState.colorRam, 0, sizeof(emuState.colorRam));
     for (unsigned i = 0; i < sizeof(emuState.mainRam); i++) {
         emuState.mainRam[i] = rand();
     }
-    memset(emuState.videoRam, 0, sizeof(emuState.videoRam));
-    memset(emuState.charRam, 0, sizeof(emuState.charRam));
 
     z80ctx.ioRead   = _ioRead;
     z80ctx.ioWrite  = _ioWrite;
@@ -31,14 +24,7 @@ EmuState::EmuState() {
 
 void EmuState::coldReset() {
     // Reset registers
-    videoCtrl             = 0;
-    videoScrX             = 0;
-    videoScrY             = 0;
-    videoSprSel           = 0;
-    videoPalSel           = 0;
-    videoLine             = 0;
     audioDAC              = 0;
-    videoIrqLine          = 0;
     irqMask               = 0;
     irqStatus             = 0;
     bankRegs[0]           = 0xC0 | 0;
@@ -160,7 +146,7 @@ unsigned EmuState::emulate() {
     sampleHalfCycles += delta;
 
     // Handle VIRQLINE register
-    if (prevLineHalfCycles < 320 && lineHalfCycles >= 320 && videoLine == videoIrqLine) {
+    if (prevLineHalfCycles < 320 && lineHalfCycles >= 320 && video.videoLine == video.videoIrqLine) {
         irqStatus |= (1 << 1);
     }
 
@@ -169,13 +155,13 @@ unsigned EmuState::emulate() {
 
         video.drawLine();
 
-        videoLine++;
-        if (videoLine == 240) {
+        video.videoLine++;
+        if (video.videoLine == 240) {
             irqStatus |= (1 << 0);
 
-        } else if (videoLine == 262) {
+        } else if (video.videoLine == 262) {
             resultFlags |= ERF_RENDER_SCREEN;
-            videoLine = 0;
+            video.videoLine = 0;
         }
     }
     keyboardTypeIn();
@@ -280,19 +266,19 @@ uint8_t EmuState::memRead(uint16_t addr, bool triggerBp) {
     addr &= 0x3FFF;
 
     if (overlayRam && addr >= 0x3000 && addr < 0x3800) {
-        if (emuState.videoCtrl & VCTRL_80_COLUMNS) {
-            if (emuState.videoCtrl & VCTRL_TRAM_PAGE) {
-                return emuState.colorRam[addr & 0x7FF];
+        if (video.videoCtrl & VCTRL_80_COLUMNS) {
+            if (video.videoCtrl & VCTRL_TRAM_PAGE) {
+                return video.colorRam[addr & 0x7FF];
             } else {
-                return emuState.screenRam[addr & 0x7FF];
+                return video.screenRam[addr & 0x7FF];
             }
 
         } else {
-            unsigned offset = (emuState.videoCtrl & VCTRL_TRAM_PAGE) ? 0x400 : 0;
+            unsigned offset = (video.videoCtrl & VCTRL_TRAM_PAGE) ? 0x400 : 0;
             if (addr < 0x3400) {
-                return emuState.screenRam[offset | (addr & 0x3FF)];
+                return video.screenRam[offset | (addr & 0x3FF)];
             } else {
-                return emuState.colorRam[offset | (addr & 0x3FF)];
+                return video.colorRam[offset | (addr & 0x3FF)];
             }
         }
     }
@@ -304,10 +290,10 @@ uint8_t EmuState::memRead(uint16_t addr, bool triggerBp) {
     } else if (page == 19) {
         return emuState.cartridgeInserted ? emuState.cartRom[addr] : 0xFF;
     } else if (page == 20) {
-        return emuState.videoRam[addr];
+        return video.videoRam[addr];
     } else if (page == 21) {
         if (addr < 0x800) {
-            return emuState.charRam[addr];
+            return video.charRam[addr];
         }
     } else if (page >= 32 && page < 64) {
         return emuState.mainRam[(page - 32) * 0x4000 + addr];
@@ -343,19 +329,19 @@ void EmuState::memWrite(uint16_t addr, uint8_t data, bool triggerBp) {
     addr &= 0x3FFF;
 
     if (overlayRam && addr >= 0x3000 && addr < 0x3800) {
-        if (emuState.videoCtrl & VCTRL_80_COLUMNS) {
-            if (emuState.videoCtrl & VCTRL_TRAM_PAGE) {
-                emuState.colorRam[addr & 0x7FF] = data;
+        if (video.videoCtrl & VCTRL_80_COLUMNS) {
+            if (video.videoCtrl & VCTRL_TRAM_PAGE) {
+                video.colorRam[addr & 0x7FF] = data;
             } else {
-                emuState.screenRam[addr & 0x7FF] = data;
+                video.screenRam[addr & 0x7FF] = data;
             }
 
         } else {
-            unsigned offset = (emuState.videoCtrl & VCTRL_TRAM_PAGE) ? 0x400 : 0;
+            unsigned offset = (video.videoCtrl & VCTRL_TRAM_PAGE) ? 0x400 : 0;
             if (addr < 0x3400) {
-                emuState.screenRam[offset | (addr & 0x3FF)] = data;
+                video.screenRam[offset | (addr & 0x3FF)] = data;
             } else {
-                emuState.colorRam[offset | (addr & 0x3FF)] = data;
+                video.colorRam[offset | (addr & 0x3FF)] = data;
             }
         }
         return;
@@ -371,10 +357,10 @@ void EmuState::memWrite(uint16_t addr, uint8_t data, bool triggerBp) {
         // Game ROM is readonly
         return;
     } else if (page == 20) {
-        emuState.videoRam[addr] = data;
+        video.videoRam[addr] = data;
     } else if (page == 21) {
         if (addr < 0x800) {
-            emuState.charRam[addr] = data;
+            video.charRam[addr] = data;
         }
     } else if (page >= 32 && page < 64) {
         emuState.mainRam[(page - 32) * 0x4000 + addr] = data;
@@ -394,22 +380,22 @@ uint8_t EmuState::ioRead(uint16_t addr, bool triggerBp) {
 
     if (!emuState.sysCtrlDisableExt) {
         switch (addr & 0xFF) {
-            case 0xE0: return emuState.videoCtrl;
-            case 0xE1: return emuState.videoScrX & 0xFF;
-            case 0xE2: return emuState.videoScrX >> 8;
-            case 0xE3: return emuState.videoScrY;
-            case 0xE4: return emuState.videoSprSel;
-            case 0xE5: return emuState.videoSprX[emuState.videoSprSel] & 0xFF;
-            case 0xE6: return emuState.videoSprX[emuState.videoSprSel] >> 8;
-            case 0xE7: return emuState.videoSprY[emuState.videoSprSel];
-            case 0xE8: return emuState.videoSprIdx[emuState.videoSprSel] & 0xFF;
+            case 0xE0: return video.videoCtrl;
+            case 0xE1: return video.videoScrX & 0xFF;
+            case 0xE2: return video.videoScrX >> 8;
+            case 0xE3: return video.videoScrY;
+            case 0xE4: return video.videoSprSel;
+            case 0xE5: return video.videoSprX[video.videoSprSel] & 0xFF;
+            case 0xE6: return video.videoSprX[video.videoSprSel] >> 8;
+            case 0xE7: return video.videoSprY[video.videoSprSel];
+            case 0xE8: return video.videoSprIdx[video.videoSprSel] & 0xFF;
             case 0xE9: return (
-                (emuState.videoSprAttr[emuState.videoSprSel] & 0xFE) |
-                ((emuState.videoSprIdx[emuState.videoSprSel] >> 8) & 1));
-            case 0xEA: return emuState.videoPalSel;
-            case 0xEB: return (emuState.videoPalette[emuState.videoPalSel >> 1] >> ((emuState.videoPalSel & 1) * 8)) & 0xFF;
-            case 0xEC: return emuState.videoLine < 255 ? emuState.videoLine : 255;
-            case 0xED: return emuState.videoIrqLine;
+                (video.videoSprAttr[video.videoSprSel] & 0xFE) |
+                ((video.videoSprIdx[video.videoSprSel] >> 8) & 1));
+            case 0xEA: return video.videoPalSel;
+            case 0xEB: return (video.videoPalette[video.videoPalSel >> 1] >> ((video.videoPalSel & 1) * 8)) & 0xFF;
+            case 0xEC: return video.videoLine < 255 ? video.videoLine : 255;
+            case 0xED: return video.videoIrqLine;
             case 0xEE: return emuState.irqMask;
             case 0xEF: return emuState.irqStatus;
             case 0xF0: return emuState.bankRegs[0];
@@ -424,23 +410,15 @@ uint8_t EmuState::ioRead(uint16_t addr, bool triggerBp) {
     switch (addr & 0xFF) {
         case 0xF6:
         case 0xF7:
-            if (emuState.sysCtrlAyDisable)
-                return 0xFF;
-            else {
-                switch (emuState.ay1Addr) {
-                    case 14: return emuState.handCtrl1;
-                    case 15: return emuState.handCtrl2;
-                    default: return emuState.ay1.readReg(emuState.ay1Addr);
-                }
-            }
-            break;
+            return (emuState.sysCtrlAyDisable)
+                       ? 0xFF
+                       : emuState.ay1.readReg(emuState.ay1Addr);
 
         case 0xF8:
         case 0xF9:
-            if (emuState.sysCtrlAyDisable || emuState.sysCtrlDisableExt)
-                return 0xFF;
-            else
-                return emuState.ay2.readReg(emuState.ay2Addr);
+            return (emuState.sysCtrlAyDisable || emuState.sysCtrlDisableExt)
+                       ? 0xFF
+                       : emuState.ay2.readReg(emuState.ay2Addr);
 
         case 0xFA: return emuState.kbBufRead();
         case 0xFB: return (
@@ -451,7 +429,7 @@ uint8_t EmuState::ioRead(uint16_t addr, bool triggerBp) {
             (emuState.sysCtrlDisableExt ? (1 << 0) : 0));
 
         case 0xFC: /* printf("Cassette port input (%04x)\n", addr); */ return 0xFF;
-        case 0xFD: return (emuState.videoLine >= 16 && emuState.videoLine <= 216) ? 1 : 0;
+        case 0xFD: return (video.videoLine >= 16 && video.videoLine <= 216) ? 1 : 0;
         case 0xFE: /* printf("Clear to send status (%04x)\n", addr); */ return 0xFF;
         case 0xFF: {
             // Keyboard matrix. Selected rows are passed in the upper 8 address lines.
@@ -486,31 +464,31 @@ void EmuState::ioWrite(uint16_t addr, uint8_t data, bool triggerBp) {
 
     if (!emuState.sysCtrlDisableExt) {
         switch (addr & 0xFF) {
-            case 0xE0: emuState.videoCtrl = data; return;
-            case 0xE1: emuState.videoScrX = (emuState.videoScrX & ~0xFF) | data; return;
-            case 0xE2: emuState.videoScrX = (emuState.videoScrX & 0xFF) | ((data & 1) << 8); return;
-            case 0xE3: emuState.videoScrY = data; return;
-            case 0xE4: emuState.videoSprSel = data & 0x3F; return;
-            case 0xE5: emuState.videoSprX[emuState.videoSprSel] = (emuState.videoSprX[emuState.videoSprSel] & ~0xFF) | data; return;
-            case 0xE6: emuState.videoSprX[emuState.videoSprSel] = (emuState.videoSprX[emuState.videoSprSel] & 0xFF) | ((data & 1) << 8); return;
-            case 0xE7: emuState.videoSprY[emuState.videoSprSel] = data; return;
-            case 0xE8: emuState.videoSprIdx[emuState.videoSprSel] = (emuState.videoSprIdx[emuState.videoSprSel] & ~0xFF) | data; return;
+            case 0xE0: video.videoCtrl = data; return;
+            case 0xE1: video.videoScrX = (video.videoScrX & ~0xFF) | data; return;
+            case 0xE2: video.videoScrX = (video.videoScrX & 0xFF) | ((data & 1) << 8); return;
+            case 0xE3: video.videoScrY = data; return;
+            case 0xE4: video.videoSprSel = data & 0x3F; return;
+            case 0xE5: video.videoSprX[video.videoSprSel] = (video.videoSprX[video.videoSprSel] & ~0xFF) | data; return;
+            case 0xE6: video.videoSprX[video.videoSprSel] = (video.videoSprX[video.videoSprSel] & 0xFF) | ((data & 1) << 8); return;
+            case 0xE7: video.videoSprY[video.videoSprSel] = data; return;
+            case 0xE8: video.videoSprIdx[video.videoSprSel] = (video.videoSprIdx[video.videoSprSel] & ~0xFF) | data; return;
             case 0xE9:
-                emuState.videoSprAttr[emuState.videoSprSel] = data & 0xFE;
-                emuState.videoSprIdx[emuState.videoSprSel]  = (emuState.videoSprIdx[emuState.videoSprSel] & 0xFF) | ((data & 1) << 8);
+                video.videoSprAttr[video.videoSprSel] = data & 0xFE;
+                video.videoSprIdx[video.videoSprSel]  = (video.videoSprIdx[video.videoSprSel] & 0xFF) | ((data & 1) << 8);
                 return;
-            case 0xEA: emuState.videoPalSel = data & 0x7F; return;
+            case 0xEA: video.videoPalSel = data & 0x7F; return;
             case 0xEB:
-                if ((emuState.videoPalSel & 1) == 0) {
-                    emuState.videoPalette[emuState.videoPalSel >> 1] =
-                        (emuState.videoPalette[emuState.videoPalSel >> 1] & 0xF00) | data;
+                if ((video.videoPalSel & 1) == 0) {
+                    video.videoPalette[video.videoPalSel >> 1] =
+                        (video.videoPalette[video.videoPalSel >> 1] & 0xF00) | data;
                 } else {
-                    emuState.videoPalette[emuState.videoPalSel >> 1] =
-                        ((data & 0xF) << 8) | (emuState.videoPalette[emuState.videoPalSel >> 1] & 0xFF);
+                    video.videoPalette[video.videoPalSel >> 1] =
+                        ((data & 0xF) << 8) | (video.videoPalette[video.videoPalSel >> 1] & 0xFF);
                 }
                 return;
             case 0xEC: emuState.audioDAC = data; return;
-            case 0xED: emuState.videoIrqLine = data; return;
+            case 0xED: video.videoIrqLine = data; return;
             case 0xEE: emuState.irqMask = data & 3; return;
             case 0xEF: emuState.irqStatus &= ~data; return;
             case 0xF0: emuState.bankRegs[0] = data; return;

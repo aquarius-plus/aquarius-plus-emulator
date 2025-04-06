@@ -8,7 +8,7 @@
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include "MemoryEditor.h"
 
-#include "Video.h"
+#include "AqpVideo.h"
 #include "Keyboard.h"
 #include "UartProtocol.h"
 #include "VFS.h"
@@ -418,19 +418,19 @@ public:
                         ImGui::Separator();
 
                         if (ImGui::MenuItem("Clear memory (0x00) & reset Aquarius+", "")) {
-                            memset(emuState.screenRam, 0, sizeof(emuState.screenRam));
-                            memset(emuState.colorRam, 0, sizeof(emuState.colorRam));
                             memset(emuState.mainRam, 0, sizeof(emuState.mainRam));
-                            memset(emuState.videoRam, 0, sizeof(emuState.videoRam));
-                            memset(emuState.charRam, 0, sizeof(emuState.charRam));
+                            memset(emuState.video.screenRam, 0, sizeof(emuState.video.screenRam));
+                            memset(emuState.video.colorRam, 0, sizeof(emuState.video.colorRam));
+                            memset(emuState.video.videoRam, 0, sizeof(emuState.video.videoRam));
+                            memset(emuState.video.charRam, 0, sizeof(emuState.video.charRam));
                             emuState.warmReset();
                         }
                         if (ImGui::MenuItem("Clear memory (0xA5) & reset Aquarius+", "")) {
-                            memset(emuState.screenRam, 0xA5, sizeof(emuState.screenRam));
-                            memset(emuState.colorRam, 0xA5, sizeof(emuState.colorRam));
                             memset(emuState.mainRam, 0xA5, sizeof(emuState.mainRam));
-                            memset(emuState.videoRam, 0xA5, sizeof(emuState.videoRam));
-                            memset(emuState.charRam, 0xA5, sizeof(emuState.charRam));
+                            memset(emuState.video.screenRam, 0xA5, sizeof(emuState.video.screenRam));
+                            memset(emuState.video.colorRam, 0xA5, sizeof(emuState.video.colorRam));
+                            memset(emuState.video.videoRam, 0xA5, sizeof(emuState.video.videoRam));
+                            memset(emuState.video.charRam, 0xA5, sizeof(emuState.video.charRam));
                             emuState.warmReset();
                         }
 
@@ -705,12 +705,12 @@ public:
                 dbgUpdateScreen = false;
 
                 // Update screen
-                int line = emuState.videoLine;
+                int line = emuState.video.videoLine;
                 for (int i = 0; i < 240; i++) {
-                    emuState.videoLine = i;
+                    emuState.video.videoLine = i;
                     emuState.video.drawLine();
                 }
-                emuState.videoLine = line;
+                emuState.video.videoLine = line;
             }
         }
 
@@ -1106,11 +1106,11 @@ public:
 
         if (memAreas.empty()) {
             memAreas.emplace_back("Z80 memory", nullptr, 0x10000);
-            memAreas.emplace_back("Screen RAM", emuState.screenRam, sizeof(emuState.screenRam));
-            memAreas.emplace_back("Color RAM", emuState.colorRam, sizeof(emuState.colorRam));
+            memAreas.emplace_back("Screen RAM", emuState.video.screenRam, sizeof(emuState.video.screenRam));
+            memAreas.emplace_back("Color RAM", emuState.video.colorRam, sizeof(emuState.video.colorRam));
             memAreas.emplace_back("Page 19: Cartridge ROM", emuState.cartRom, sizeof(emuState.cartRom));
-            memAreas.emplace_back("Page 20: Video RAM", emuState.videoRam, sizeof(emuState.videoRam));
-            memAreas.emplace_back("Page 21: Character RAM", emuState.charRam, sizeof(emuState.charRam));
+            memAreas.emplace_back("Page 20: Video RAM", emuState.video.videoRam, sizeof(emuState.video.videoRam));
+            memAreas.emplace_back("Page 21: Character RAM", emuState.video.charRam, sizeof(emuState.video.charRam));
 
             for (int i = 32; i < 64; i++) {
                 char tmp[256];
@@ -1158,17 +1158,7 @@ public:
         bool open = ImGui::Begin("IO Registers", p_open, 0);
         if (open) {
             if (ImGui::CollapsingHeader("Video")) {
-                ImGui::Text("$E0     VCTRL   : $%02X", emuState.videoCtrl);
-                ImGui::Text("$E1/$E2 VSCRX   : %u", emuState.videoScrX);
-                ImGui::Text("$E3     VSCRY   : %u", emuState.videoScrY);
-                ImGui::Text("$E4     VSPRSEL : %u", emuState.videoSprSel);
-                ImGui::Text("$E5/$E6 VSPRX   : %u", emuState.videoSprX[emuState.videoSprSel]);
-                ImGui::Text("$E7     VSPRY   : %u", emuState.videoSprY[emuState.videoSprSel]);
-                ImGui::Text("$E8/$E9 VSPRIDX : %u", emuState.videoSprIdx[emuState.videoSprSel]);
-                ImGui::Text("$E9     VSPRATTR: $%02X", emuState.videoSprAttr[emuState.videoSprSel]);
-                ImGui::Text("$EA     VPALSEL : %u", emuState.videoPalSel);
-                ImGui::Text("$EC     VLINE   : %u", emuState.videoLine);
-                ImGui::Text("$ED     VIRQLINE: %u", emuState.videoIrqLine);
+                emuState.video.dbgDrawIoRegs();
             }
             if (ImGui::CollapsingHeader("Interrupt")) {
                 ImGui::Text("$EE IRQMASK: $%02X %s%s", emuState.irqMask, emuState.irqMask & 2 ? "[LINE]" : "", emuState.irqMask & 1 ? "[VBLANK]" : "");
@@ -1224,126 +1214,16 @@ public:
                     sysctrl & 1 ? "[EXTDIS]" : "");
             }
             if (ImGui::CollapsingHeader("Audio AY1")) {
-                ImGui::Text(" 0 AFINE   : $%02X", emuState.ay1.regs[0]);
-                ImGui::Text(" 1 ACOARSE : $%02X", emuState.ay1.regs[1]);
-                ImGui::Text(" 2 BFINE   : $%02X", emuState.ay1.regs[2]);
-                ImGui::Text(" 3 BCOARSE : $%02X", emuState.ay1.regs[3]);
-                ImGui::Text(" 4 CFINE   : $%02X", emuState.ay1.regs[4]);
-                ImGui::Text(" 5 CCOARSE : $%02X", emuState.ay1.regs[5]);
-                ImGui::Text(" 6 NOISEPER: $%02X", emuState.ay1.regs[6]);
-                ImGui::Text(" 7 ENABLE  : $%02X", emuState.ay1.regs[7]);
-                ImGui::Text(" 8 AVOL    : $%02X", emuState.ay1.regs[8]);
-                ImGui::Text(" 9 BVOL    : $%02X", emuState.ay1.regs[9]);
-                ImGui::Text("10 CVOL    : $%02X", emuState.ay1.regs[10]);
-                ImGui::Text("11 EAFINE  : $%02X", emuState.ay1.regs[11]);
-                ImGui::Text("12 EACOARSE: $%02X", emuState.ay1.regs[12]);
-                ImGui::Text("13 EASHAPE : $%02X", emuState.ay1.regs[13]);
-                ImGui::Text("14 PORTA   : $%02X", emuState.handCtrl1);
-                ImGui::Text("15 PORTB   : $%02X", emuState.handCtrl2);
+                emuState.ay1.dbgDrawIoRegs();
             }
             if (ImGui::CollapsingHeader("Audio AY2")) {
-                ImGui::Text(" 0 AFINE   : $%02X", emuState.ay2.regs[0]);
-                ImGui::Text(" 1 ACOARSE : $%02X", emuState.ay2.regs[1]);
-                ImGui::Text(" 2 BFINE   : $%02X", emuState.ay2.regs[2]);
-                ImGui::Text(" 3 BCOARSE : $%02X", emuState.ay2.regs[3]);
-                ImGui::Text(" 4 CFINE   : $%02X", emuState.ay2.regs[4]);
-                ImGui::Text(" 5 CCOARSE : $%02X", emuState.ay2.regs[5]);
-                ImGui::Text(" 6 NOISEPER: $%02X", emuState.ay2.regs[6]);
-                ImGui::Text(" 7 ENABLE  : $%02X", emuState.ay2.regs[7]);
-                ImGui::Text(" 8 AVOL    : $%02X", emuState.ay2.regs[8]);
-                ImGui::Text(" 9 BVOL    : $%02X", emuState.ay2.regs[9]);
-                ImGui::Text("10 CVOL    : $%02X", emuState.ay2.regs[10]);
-                ImGui::Text("11 EAFINE  : $%02X", emuState.ay2.regs[11]);
-                ImGui::Text("12 EACOARSE: $%02X", emuState.ay2.regs[12]);
-                ImGui::Text("13 EASHAPE : $%02X", emuState.ay2.regs[13]);
+                emuState.ay2.dbgDrawIoRegs();
             }
             if (ImGui::CollapsingHeader("Sprites")) {
-                if (ImGui::BeginTable("Table", 10, ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersV | ImGuiTableFlags_BordersOuter)) {
-                    ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed);
-                    ImGui::TableSetupColumn("X", ImGuiTableColumnFlags_WidthFixed);
-                    ImGui::TableSetupColumn("Y", ImGuiTableColumnFlags_WidthFixed);
-                    ImGui::TableSetupColumn("Tile", ImGuiTableColumnFlags_WidthFixed);
-                    ImGui::TableSetupColumn("En", ImGuiTableColumnFlags_WidthFixed);
-                    ImGui::TableSetupColumn("Pri", ImGuiTableColumnFlags_WidthFixed);
-                    ImGui::TableSetupColumn("Pal", ImGuiTableColumnFlags_WidthFixed);
-                    ImGui::TableSetupColumn("H16", ImGuiTableColumnFlags_WidthFixed);
-                    ImGui::TableSetupColumn("VF", ImGuiTableColumnFlags_WidthFixed);
-                    ImGui::TableSetupColumn("HF");
-                    ImGui::TableSetupScrollFreeze(0, 1);
-                    ImGui::TableHeadersRow();
-
-                    ImGuiListClipper clipper;
-                    clipper.Begin(64);
-                    while (clipper.Step()) {
-                        for (int row_n = clipper.DisplayStart; row_n < clipper.DisplayEnd; row_n++) {
-                            ImGui::TableNextRow();
-                            ImGui::TableNextColumn();
-                            ImGui::Text("%2d", row_n);
-                            ImGui::TableNextColumn();
-                            ImGui::Text("%3d", emuState.videoSprX[row_n]);
-                            ImGui::TableNextColumn();
-                            ImGui::Text("%3d", emuState.videoSprY[row_n]);
-                            ImGui::TableNextColumn();
-                            ImGui::Text("%3d", emuState.videoSprIdx[row_n]);
-                            ImGui::TableNextColumn();
-                            ImGui::TextUnformatted((emuState.videoSprAttr[row_n] & 0x80) ? "X" : "");
-                            ImGui::TableNextColumn();
-                            ImGui::TextUnformatted((emuState.videoSprAttr[row_n] & 0x40) ? "X" : "");
-                            ImGui::TableNextColumn();
-                            ImGui::Text("%d", (emuState.videoSprAttr[row_n] >> 4) & 3);
-                            ImGui::TableNextColumn();
-                            ImGui::TextUnformatted((emuState.videoSprAttr[row_n] & 0x08) ? "X" : "");
-                            ImGui::TableNextColumn();
-                            ImGui::TextUnformatted((emuState.videoSprAttr[row_n] & 0x04) ? "X" : "");
-                            ImGui::TableNextColumn();
-                            ImGui::TextUnformatted((emuState.videoSprAttr[row_n] & 0x02) ? "X" : "");
-                        }
-                    }
-                    ImGui::EndTable();
-                }
+                emuState.video.dbgDrawSpriteRegs();
             }
             if (ImGui::CollapsingHeader("Palette")) {
-                if (ImGui::BeginTable("Table", 8, ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersV | ImGuiTableFlags_BordersOuter)) {
-                    ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed);
-                    ImGui::TableSetupColumn("Pal", ImGuiTableColumnFlags_WidthFixed);
-                    ImGui::TableSetupColumn("Idx", ImGuiTableColumnFlags_WidthFixed);
-                    ImGui::TableSetupColumn("Hex", ImGuiTableColumnFlags_WidthFixed);
-                    ImGui::TableSetupColumn("R", ImGuiTableColumnFlags_WidthFixed);
-                    ImGui::TableSetupColumn("G", ImGuiTableColumnFlags_WidthFixed);
-                    ImGui::TableSetupColumn("B", ImGuiTableColumnFlags_WidthFixed);
-                    ImGui::TableSetupColumn("Color");
-                    ImGui::TableSetupScrollFreeze(0, 1);
-                    ImGui::TableHeadersRow();
-
-                    ImGuiListClipper clipper;
-                    clipper.Begin(64);
-                    while (clipper.Step()) {
-                        for (int row_n = clipper.DisplayStart; row_n < clipper.DisplayEnd; row_n++) {
-                            int r = (emuState.videoPalette[row_n] >> 8) & 0xF;
-                            int g = (emuState.videoPalette[row_n] >> 4) & 0xF;
-                            int b = (emuState.videoPalette[row_n] >> 0) & 0xF;
-
-                            ImGui::TableNextRow();
-                            ImGui::TableNextColumn();
-                            ImGui::Text("%2d", row_n);
-                            ImGui::TableNextColumn();
-                            ImGui::Text("%d", row_n / 16);
-                            ImGui::TableNextColumn();
-                            ImGui::Text("%2d", row_n & 15);
-                            ImGui::TableNextColumn();
-                            ImGui::Text("%03X", emuState.videoPalette[row_n]);
-                            ImGui::TableNextColumn();
-                            ImGui::Text("%2d", r);
-                            ImGui::TableNextColumn();
-                            ImGui::Text("%2d", g);
-                            ImGui::TableNextColumn();
-                            ImGui::Text("%2d", b);
-                            ImGui::TableNextColumn();
-                            ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, ImGui::GetColorU32((ImVec4)ImColor((r << 4) | r, (g << 4) | g, (b << 4) | b)));
-                        }
-                    }
-                    ImGui::EndTable();
-                }
+                emuState.video.dbgDrawPaletteRegs();
             }
         }
         ImGui::End();

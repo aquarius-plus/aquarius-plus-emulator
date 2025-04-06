@@ -4,6 +4,7 @@
 
 #include "AY8910.h"
 #include <string.h>
+#include "imgui.h"
 
 enum {
     AY_AFINE    = 0x00,
@@ -101,6 +102,11 @@ uint8_t AY8910::readReg(uint8_t r) {
     if (r > 15)
         return 0xFF;
 
+    if (r == 14)
+        return portRdData[0];
+    if (r == 15)
+        return portRdData[1];
+
     static const uint8_t mask[0x10] = {0xFF, 0x0F, 0xFF, 0x0F, 0xFF, 0x0F, 0x1F, 0xFF, 0x1F, 0x1F, 0x1F, 0xFF, 0xFF, 0x0F, 0xFF, 0xFF};
     return regs[r] & mask[r];
 }
@@ -181,4 +187,23 @@ void AY8910::render(uint16_t abc[3]) {
         }
         abc[ch] = dacLevels[value[ch] ? volume : 0];
     }
+}
+
+void AY8910::dbgDrawIoRegs() {
+    ImGui::Text(" 0 AFINE   : $%02X", regs[0]);
+    ImGui::Text(" 1 ACOARSE : $%02X", regs[1]);
+    ImGui::Text(" 2 BFINE   : $%02X", regs[2]);
+    ImGui::Text(" 3 BCOARSE : $%02X", regs[3]);
+    ImGui::Text(" 4 CFINE   : $%02X", regs[4]);
+    ImGui::Text(" 5 CCOARSE : $%02X", regs[5]);
+    ImGui::Text(" 6 NOISEPER: $%02X", regs[6]);
+    ImGui::Text(" 7 ENABLE  : $%02X", regs[7]);
+    ImGui::Text(" 8 AVOL    : $%02X", regs[8]);
+    ImGui::Text(" 9 BVOL    : $%02X", regs[9]);
+    ImGui::Text("10 CVOL    : $%02X", regs[10]);
+    ImGui::Text("11 EAFINE  : $%02X", regs[11]);
+    ImGui::Text("12 EACOARSE: $%02X", regs[12]);
+    ImGui::Text("13 EASHAPE : $%02X", regs[13]);
+    ImGui::Text("14 PORTA   : $%02X", portRdData[0]);
+    ImGui::Text("15 PORTB   : $%02X", portRdData[1]);
 }
