@@ -19,8 +19,59 @@ void AqpVideo::reset() {
     videoIrqLine = 0;
 }
 
-void AqpVideo::drawLine() {
-    int line = videoLine;
+void AqpVideo::writeReg(uint8_t r, uint8_t v) {
+    switch (r) {
+        case 0xE0: videoCtrl = v; return;
+        case 0xE1: videoScrX = (videoScrX & ~0xFF) | v; return;
+        case 0xE2: videoScrX = (videoScrX & 0xFF) | ((v & 1) << 8); return;
+        case 0xE3: videoScrY = v; return;
+        case 0xE4: videoSprSel = v & 0x3F; return;
+        case 0xE5: videoSprX[videoSprSel] = (videoSprX[videoSprSel] & ~0xFF) | v; return;
+        case 0xE6: videoSprX[videoSprSel] = (videoSprX[videoSprSel] & 0xFF) | ((v & 1) << 8); return;
+        case 0xE7: videoSprY[videoSprSel] = v; return;
+        case 0xE8: videoSprIdx[videoSprSel] = (videoSprIdx[videoSprSel] & ~0xFF) | v; return;
+        case 0xE9:
+            videoSprAttr[videoSprSel] = v & 0xFE;
+            videoSprIdx[videoSprSel]  = (videoSprIdx[videoSprSel] & 0xFF) | ((v & 1) << 8);
+            return;
+        case 0xEA: videoPalSel = v & 0x7F; return;
+        case 0xEB:
+            if ((videoPalSel & 1) == 0) {
+                videoPalette[videoPalSel >> 1] =
+                    (videoPalette[videoPalSel >> 1] & 0xF00) | v;
+            } else {
+                videoPalette[videoPalSel >> 1] =
+                    ((v & 0xF) << 8) | (videoPalette[videoPalSel >> 1] & 0xFF);
+            }
+            return;
+        case 0xED: videoIrqLine = v; return;
+    }
+}
+
+uint8_t AqpVideo::readReg(uint8_t r) {
+    switch (r) {
+        case 0xE0: return videoCtrl;
+        case 0xE1: return videoScrX & 0xFF;
+        case 0xE2: return videoScrX >> 8;
+        case 0xE3: return videoScrY;
+        case 0xE4: return videoSprSel;
+        case 0xE5: return videoSprX[videoSprSel] & 0xFF;
+        case 0xE6: return videoSprX[videoSprSel] >> 8;
+        case 0xE7: return videoSprY[videoSprSel];
+        case 0xE8: return videoSprIdx[videoSprSel] & 0xFF;
+        case 0xE9: return (
+            (videoSprAttr[videoSprSel] & 0xFE) |
+            ((videoSprIdx[videoSprSel] >> 8) & 1));
+        case 0xEA: return videoPalSel;
+        case 0xEB: return (videoPalette[videoPalSel >> 1] >> ((videoPalSel & 1) * 8)) & 0xFF;
+        case 0xEC: return videoLine < 255 ? videoLine : 255;
+        case 0xED: return videoIrqLine;
+        case 0xFD: return (videoLine >= 16 && videoLine <= 216) ? 1 : 0;
+    }
+    return 0xFF;
+}
+
+void AqpVideo::drawLine(int line) {
     if (line < 0 || line >= VIDEO_HEIGHT)
         return;
 

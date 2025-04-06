@@ -24,13 +24,74 @@ public:
         return screen;
     }
 
-    void reset();
-    void drawLine();
+    bool isOnVideoIrqLine() { return videoLine == videoIrqLine; }
+    bool isOnStartOfVBlank() { return videoLine == 240; }
+
+    void    reset();
+    void    writeReg(uint8_t r, uint8_t v);
+    uint8_t readReg(uint8_t r);
+    void    drawLine(int line);
+    int     getLine() { return videoLine; }
+
+    bool nextLine() {
+        videoLine++;
+        if (videoLine == 262) {
+            videoLine = 0;
+            return true;
+        }
+        return false;
+    }
+
+    uint8_t readScreenOrColorRam(unsigned addr) {
+        addr &= 0x7FF;
+
+        if (videoCtrl & VCTRL_80_COLUMNS) {
+            if (videoCtrl & VCTRL_TRAM_PAGE) {
+                return colorRam[addr];
+            } else {
+                return screenRam[addr];
+            }
+
+        } else {
+            unsigned offset = (videoCtrl & VCTRL_TRAM_PAGE) ? 0x400 : 0;
+            if (addr < 0x400) {
+                return screenRam[offset | (addr & 0x3FF)];
+            } else {
+                return colorRam[offset | (addr & 0x3FF)];
+            }
+        }
+    }
+
+    void writeScreenOrColorRam(unsigned addr, uint8_t data) {
+        addr &= 0x7FF;
+
+        if (videoCtrl & VCTRL_80_COLUMNS) {
+            if (videoCtrl & VCTRL_TRAM_PAGE) {
+                colorRam[addr] = data;
+            } else {
+                screenRam[addr] = data;
+            }
+
+        } else {
+            unsigned offset = (videoCtrl & VCTRL_TRAM_PAGE) ? 0x400 : 0;
+            if (addr < 0x400) {
+                screenRam[offset | (addr & 0x3FF)] = data;
+            } else {
+                colorRam[offset | (addr & 0x3FF)] = data;
+            }
+        }
+    }
 
     void dbgDrawIoRegs();
     void dbgDrawSpriteRegs();
     void dbgDrawPaletteRegs();
 
+    uint8_t screenRam[2048];     // $3000-33FF: Screen RAM for text mode
+    uint8_t colorRam[2048];      // $3400-37FF: Color RAM for text mode
+    uint8_t videoRam[16 * 1024]; // Video RAM
+    uint8_t charRam[2048];       // Character RAM
+
+private:
     uint8_t  videoCtrl        = 0;   // $E0   : Video control register
     uint16_t videoScrX        = 0;   // $E1/E2: Tile map horizontal scroll register
     uint8_t  videoScrY        = 0;   // $E3   : Tile map horizontal scroll register
@@ -44,11 +105,5 @@ public:
     uint16_t videoLine        = 0;   // $EC   : Current line number
     uint8_t  videoIrqLine     = 0;   // $ED   : Line number at which to generate IRQ
 
-    uint8_t screenRam[2048];     // $3000-33FF: Screen RAM for text mode
-    uint8_t colorRam[2048];      // $3400-37FF: Color RAM for text mode
-    uint8_t videoRam[16 * 1024]; // Video RAM
-    uint8_t charRam[2048];       // Character RAM
-
-private:
     uint16_t screen[VIDEO_WIDTH * VIDEO_HEIGHT];
 };

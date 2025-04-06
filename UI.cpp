@@ -705,12 +705,8 @@ public:
                 dbgUpdateScreen = false;
 
                 // Update screen
-                int line = emuState.video.videoLine;
-                for (int i = 0; i < 240; i++) {
-                    emuState.video.videoLine = i;
-                    emuState.video.drawLine();
-                }
-                emuState.video.videoLine = line;
+                for (int i = 0; i < 240; i++)
+                    emuState.video.drawLine(i);
             }
         }
 

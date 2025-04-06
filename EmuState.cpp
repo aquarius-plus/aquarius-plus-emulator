@@ -146,22 +146,19 @@ unsigned EmuState::emulate() {
     sampleHalfCycles += delta;
 
     // Handle VIRQLINE register
-    if (prevLineHalfCycles < 320 && lineHalfCycles >= 320 && video.videoLine == video.videoIrqLine) {
+    if (prevLineHalfCycles < 320 && lineHalfCycles >= 320 && video.isOnVideoIrqLine()) {
         irqStatus |= (1 << 1);
     }
 
     if (lineHalfCycles >= HCYCLES_PER_LINE) {
         lineHalfCycles -= HCYCLES_PER_LINE;
 
-        video.drawLine();
+        video.drawLine(video.getLine());
 
-        video.videoLine++;
-        if (video.videoLine == 240) {
-            irqStatus |= (1 << 0);
-
-        } else if (video.videoLine == 262) {
+        if (video.nextLine()) {
             resultFlags |= ERF_RENDER_SCREEN;
-            video.videoLine = 0;
+        } else if (video.isOnStartOfVBlank()) {
+            irqStatus |= (1 << 0);
         }
     }
     keyboardTypeIn();
@@ -266,21 +263,7 @@ uint8_t EmuState::memRead(uint16_t addr, bool triggerBp) {
     addr &= 0x3FFF;
 
     if (overlayRam && addr >= 0x3000 && addr < 0x3800) {
-        if (video.videoCtrl & VCTRL_80_COLUMNS) {
-            if (video.videoCtrl & VCTRL_TRAM_PAGE) {
-                return video.colorRam[addr & 0x7FF];
-            } else {
-                return video.screenRam[addr & 0x7FF];
-            }
-
-        } else {
-            unsigned offset = (video.videoCtrl & VCTRL_TRAM_PAGE) ? 0x400 : 0;
-            if (addr < 0x3400) {
-                return video.screenRam[offset | (addr & 0x3FF)];
-            } else {
-                return video.colorRam[offset | (addr & 0x3FF)];
-            }
-        }
+        return video.readScreenOrColorRam(addr);
     }
 
     if (page == 0) {
@@ -329,21 +312,7 @@ void EmuState::memWrite(uint16_t addr, uint8_t data, bool triggerBp) {
     addr &= 0x3FFF;
 
     if (overlayRam && addr >= 0x3000 && addr < 0x3800) {
-        if (video.videoCtrl & VCTRL_80_COLUMNS) {
-            if (video.videoCtrl & VCTRL_TRAM_PAGE) {
-                video.colorRam[addr & 0x7FF] = data;
-            } else {
-                video.screenRam[addr & 0x7FF] = data;
-            }
-
-        } else {
-            unsigned offset = (video.videoCtrl & VCTRL_TRAM_PAGE) ? 0x400 : 0;
-            if (addr < 0x3400) {
-                video.screenRam[offset | (addr & 0x3FF)] = data;
-            } else {
-                video.colorRam[offset | (addr & 0x3FF)] = data;
-            }
-        }
+        video.writeScreenOrColorRam(addr, data);
         return;
     }
 
@@ -368,6 +337,8 @@ void EmuState::memWrite(uint16_t addr, uint8_t data, bool triggerBp) {
 }
 
 uint8_t EmuState::ioRead(uint16_t addr, bool triggerBp) {
+    uint8_t addr8 = addr & 0xFF;
+
     if (emuState.enableBreakpoints && triggerBp) {
         for (int i = 0; i < (int)emuState.breakpoints.size(); i++) {
             auto &bp = emuState.breakpoints[i];
@@ -379,23 +350,10 @@ uint8_t EmuState::ioRead(uint16_t addr, bool triggerBp) {
     }
 
     if (!emuState.sysCtrlDisableExt) {
-        switch (addr & 0xFF) {
-            case 0xE0: return video.videoCtrl;
-            case 0xE1: return video.videoScrX & 0xFF;
-            case 0xE2: return video.videoScrX >> 8;
-            case 0xE3: return video.videoScrY;
-            case 0xE4: return video.videoSprSel;
-            case 0xE5: return video.videoSprX[video.videoSprSel] & 0xFF;
-            case 0xE6: return video.videoSprX[video.videoSprSel] >> 8;
-            case 0xE7: return video.videoSprY[video.videoSprSel];
-            case 0xE8: return video.videoSprIdx[video.videoSprSel] & 0xFF;
-            case 0xE9: return (
-                (video.videoSprAttr[video.videoSprSel] & 0xFE) |
-                ((video.videoSprIdx[video.videoSprSel] >> 8) & 1));
-            case 0xEA: return video.videoPalSel;
-            case 0xEB: return (video.videoPalette[video.videoPalSel >> 1] >> ((video.videoPalSel & 1) * 8)) & 0xFF;
-            case 0xEC: return video.videoLine < 255 ? video.videoLine : 255;
-            case 0xED: return video.videoIrqLine;
+        if (addr8 >= 0xE0 && addr8 <= 0xED) {
+            return video.readReg(addr8);
+        }
+        switch (addr8) {
             case 0xEE: return emuState.irqMask;
             case 0xEF: return emuState.irqStatus;
             case 0xF0: return emuState.bankRegs[0];
@@ -407,7 +365,7 @@ uint8_t EmuState::ioRead(uint16_t addr, bool triggerBp) {
         }
     }
 
-    switch (addr & 0xFF) {
+    switch (addr8) {
         case 0xF6:
         case 0xF7:
             return (emuState.sysCtrlAyDisable)
@@ -429,7 +387,7 @@ uint8_t EmuState::ioRead(uint16_t addr, bool triggerBp) {
             (emuState.sysCtrlDisableExt ? (1 << 0) : 0));
 
         case 0xFC: /* printf("Cassette port input (%04x)\n", addr); */ return 0xFF;
-        case 0xFD: return (video.videoLine >= 16 && video.videoLine <= 216) ? 1 : 0;
+        case 0xFD: return video.readReg(addr & 0xFF);
         case 0xFE: /* printf("Clear to send status (%04x)\n", addr); */ return 0xFF;
         case 0xFF: {
             // Keyboard matrix. Selected rows are passed in the upper 8 address lines.
@@ -447,15 +405,17 @@ uint8_t EmuState::ioRead(uint16_t addr, bool triggerBp) {
         default: break;
     }
 
-    printf("ioRead(0x%02x)\n", addr & 0xFF);
+    printf("ioRead(0x%02x)\n", addr8);
     return 0xFF;
 }
 
 void EmuState::ioWrite(uint16_t addr, uint8_t data, bool triggerBp) {
+    uint8_t addr8 = addr & 0xFF;
+
     if (emuState.enableBreakpoints && triggerBp) {
         for (int i = 0; i < (int)emuState.breakpoints.size(); i++) {
             auto &bp = emuState.breakpoints[i];
-            if (bp.enabled && bp.onW && ((bp.type == 1 && (addr & 0xFF) == (bp.addr & 0xFF)) || (bp.type == 2 && addr == bp.addr))) {
+            if (bp.enabled && bp.onW && ((bp.type == 1 && addr8 == (bp.addr & 0xFF)) || (bp.type == 2 && addr == bp.addr))) {
                 emuState.emuMode = EmuState::Em_Halted;
                 emuState.lastBp  = i;
             }
@@ -463,32 +423,13 @@ void EmuState::ioWrite(uint16_t addr, uint8_t data, bool triggerBp) {
     }
 
     if (!emuState.sysCtrlDisableExt) {
-        switch (addr & 0xFF) {
-            case 0xE0: video.videoCtrl = data; return;
-            case 0xE1: video.videoScrX = (video.videoScrX & ~0xFF) | data; return;
-            case 0xE2: video.videoScrX = (video.videoScrX & 0xFF) | ((data & 1) << 8); return;
-            case 0xE3: video.videoScrY = data; return;
-            case 0xE4: video.videoSprSel = data & 0x3F; return;
-            case 0xE5: video.videoSprX[video.videoSprSel] = (video.videoSprX[video.videoSprSel] & ~0xFF) | data; return;
-            case 0xE6: video.videoSprX[video.videoSprSel] = (video.videoSprX[video.videoSprSel] & 0xFF) | ((data & 1) << 8); return;
-            case 0xE7: video.videoSprY[video.videoSprSel] = data; return;
-            case 0xE8: video.videoSprIdx[video.videoSprSel] = (video.videoSprIdx[video.videoSprSel] & ~0xFF) | data; return;
-            case 0xE9:
-                video.videoSprAttr[video.videoSprSel] = data & 0xFE;
-                video.videoSprIdx[video.videoSprSel]  = (video.videoSprIdx[video.videoSprSel] & 0xFF) | ((data & 1) << 8);
-                return;
-            case 0xEA: video.videoPalSel = data & 0x7F; return;
-            case 0xEB:
-                if ((video.videoPalSel & 1) == 0) {
-                    video.videoPalette[video.videoPalSel >> 1] =
-                        (video.videoPalette[video.videoPalSel >> 1] & 0xF00) | data;
-                } else {
-                    video.videoPalette[video.videoPalSel >> 1] =
-                        ((data & 0xF) << 8) | (video.videoPalette[video.videoPalSel >> 1] & 0xFF);
-                }
-                return;
+        if ((addr8 >= 0xE0 && addr8 <= 0xEB) || (addr8 == 0xED)) {
+            video.writeReg(addr8, data);
+            return;
+        }
+
+        switch (addr8) {
             case 0xEC: emuState.audioDAC = data; return;
-            case 0xED: video.videoIrqLine = data; return;
             case 0xEE: emuState.irqMask = data & 3; return;
             case 0xEF: emuState.irqStatus &= ~data; return;
             case 0xF0: emuState.bankRegs[0] = data; return;
@@ -501,7 +442,7 @@ void EmuState::ioWrite(uint16_t addr, uint8_t data, bool triggerBp) {
         }
     }
 
-    switch (addr & 0xFF) {
+    switch (addr8) {
         case 0xF6:
             if (!emuState.sysCtrlAyDisable && emuState.ay1Addr < 14)
                 emuState.ay1.writeReg(emuState.ay1Addr, data);
@@ -535,7 +476,7 @@ void EmuState::ioWrite(uint16_t addr, uint8_t data, bool triggerBp) {
         case 0xFD: emuState.cpmRemap = (data & 1) != 0; break;
         case 0xFE: /* printf("1200 bps serial printer (%04x) = %u\n", addr, data & 1); */ break;
         case 0xFF: break;
-        default: printf("ioWrite(0x%02x, 0x%02x)\n", addr & 0xFF, data); break;
+        default: printf("ioWrite(0x%02x, 0x%02x)\n", addr8, data); break;
     }
 }
 
