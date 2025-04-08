@@ -220,26 +220,6 @@ public:
         }
     }
 
-    void updateMatrix() override {
-        if (prevMatrix != keybMatrix) {
-            // printf("keybMatrix: %016llx\n", keybMatrix);
-
-            uint64_t tmpMatrix = ~keybMatrix;
-
-            memcpy(emuState.keybMatrix, &tmpMatrix, 8);
-            prevMatrix = keybMatrix;
-        }
-
-        uint8_t handCtrl1_merged = handCtrl1 & handCtrl_gameCtrl;
-
-        if (prevHandCtrl1 != handCtrl1_merged || prevHandCtrl2 != handCtrl2) {
-            emuState.ay1.portRdData[0] = handCtrl1_merged;
-            emuState.ay1.portRdData[1] = handCtrl2;
-            prevHandCtrl1              = handCtrl1_merged;
-            prevHandCtrl2              = handCtrl2;
-        }
-    }
-
     uint8_t compose(uint8_t first, uint8_t second) {
         // printf("Compose '%c' and '%c'\n", first, second);
         for (auto &combo : composeCombos) {

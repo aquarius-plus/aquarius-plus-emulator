@@ -47,6 +47,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     
     lib/Common.cpp
     
+    fpga_cores/aqplus/AqpEmuState.cpp
     fpga_cores/aqplus/AqpVideo.cpp
     fpga_cores/aqplus/AY8910.cpp
 

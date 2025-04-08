@@ -6,6 +6,15 @@
 #include "AY8910.h"
 #include <deque>
 
+class _EmuState {
+public:
+    static _EmuState *get();
+
+    virtual void spiSel(bool enable)                    = 0;
+    virtual void spiTx(const void *data, size_t length) = 0;
+    virtual void spiRx(void *buf, size_t length)        = 0;
+};
+
 // 3579545 Hz -> 59659 cycles / frame
 // 7159090 Hz -> 119318 cycles / frame
 

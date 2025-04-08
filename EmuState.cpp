@@ -4,8 +4,14 @@
 #include "Keyboard.h"
 #include "fpgarom.h"
 #include "FpgaCore.h"
+#include "AqpEmuState.h"
 
 EmuState emuState;
+
+AqpEmuState aqpEmuState;
+_EmuState  *_EmuState::get() {
+    return &aqpEmuState;
+}
 
 EmuState::EmuState() {
     memset(emuState.keybMatrix, 0xFF, sizeof(emuState.keybMatrix));

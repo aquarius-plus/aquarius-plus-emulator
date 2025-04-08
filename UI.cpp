@@ -160,7 +160,6 @@ public:
                         if (allowTyping) {
                             if (!event.key.repeat && event.key.keysym.scancode <= 255) {
                                 Keyboard::instance()->handleScancode(event.key.keysym.scancode, event.type == SDL_KEYDOWN);
-                                Keyboard::instance()->updateMatrix();
                             }
                         }
                         break;
