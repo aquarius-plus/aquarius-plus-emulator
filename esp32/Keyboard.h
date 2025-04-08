@@ -25,8 +25,8 @@ public:
 
     virtual void pressKey(uint8_t ch) = 0;
 
-    virtual void updateMatrix() = 0;
-    virtual void keyRepeatTimer()  = 0;
+    virtual void updateMatrix()   = 0;
+    virtual void keyRepeatTimer() = 0;
 
     uint8_t handCtrl_gameCtrl = 0xFF;
 };

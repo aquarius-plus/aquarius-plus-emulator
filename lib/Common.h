@@ -83,3 +83,24 @@ static inline std::string fmtstr(const char *fmt, ...) {
 
 void splitPath(const std::string &path, std::vector<std::string> &result);
 bool startsWith(const std::string &s1, const std::string &s2, bool caseSensitive = false);
+
+#define CONFIG_MACHINE_TYPE_AQPLUS
+
+typedef void *TimerHandle_t;
+typedef void *SemaphoreHandle_t;
+
+class RecursiveMutexLock {
+public:
+    RecursiveMutexLock(SemaphoreHandle_t _mutex)
+        : mutex(_mutex) {
+        // xSemaphoreTakeRecursive(mutex, portMAX_DELAY);
+    }
+    ~RecursiveMutexLock() {
+        // xSemaphoreGiveRecursive(mutex);
+    }
+
+private:
+    SemaphoreHandle_t mutex;
+};
+
+void esp_restart();

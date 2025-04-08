@@ -2,14 +2,7 @@
 
 #include "Common.h"
 #include "DisplayOverlay/Menu.h"
-
-struct CoreInfo {
-    uint8_t coreType;
-    uint8_t flags;
-    uint8_t versionMajor;
-    uint8_t versionMinor;
-    char    name[17];
-};
+#include "FPGA.h"
 
 struct GamePadData {
     int8_t   lx, ly;

@@ -16,9 +16,6 @@
 #define HCYCLES_PER_LINE   (455)
 #define HCYCLES_PER_SAMPLE (162)
 
-#define BANK_READONLY (1 << 7)
-#define BANK_MAP_RAM  (1 << 6)
-
 enum EmulateResultFlags {
     ERF_RENDER_SCREEN    = (1 << 0),
     ERF_NEW_AUDIO_SAMPLE = (1 << 1),
@@ -92,7 +89,7 @@ struct EmuState {
     struct Watch {
         uint16_t    addr = 0;
         std::string name;
-        WatchType   type;
+        WatchType   type = WatchType::Hex8;
     };
     std::vector<Watch> watches;
 

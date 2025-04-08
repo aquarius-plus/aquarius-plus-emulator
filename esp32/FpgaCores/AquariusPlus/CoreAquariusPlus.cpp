@@ -1,5 +1,5 @@
 #include "CoreAquariusPlus.h"
-// #include "FPGA.h"
+#include "FPGA.h"
 #include "Keyboard.h"
 #include "UartProtocol.h"
 #include "VFS.h"
@@ -54,26 +54,26 @@ enum {
 
 class CoreAquariusPlus : public FpgaCore {
 public:
-    // SemaphoreHandle_t mutex;
-    uint64_t    prevMatrix = 0;
-    uint64_t    keybMatrix = 0;
-    GamePadData gamePads[2];
-    uint8_t     videoTimingMode   = 0;
-    bool        useT80            = false;
-    bool        forceTurbo        = false;
-    bool        gamepadNavigation = false;
-    bool        bypassStartScreen = false;
-    // TimerHandle_t     bypassStartTimer  = nullptr;
-    bool     bypassStartCancel = false;
-    CoreInfo coreInfo;
-    bool     enableKeyboardHandCtrlMapping = false;
-    bool     enableGamePadHandCtrlMapping  = true;
-    bool     enableGamePadKeyboardMapping  = false;
-    uint8_t  gamePadButtonScanCodes[16]    = {0};
-    unsigned keybHandCtrl1Pressed          = 0;
-    uint8_t  keybHandCtrl1                 = 0xFF;
-    uint8_t  gamePadHandCtrl[2]            = {0xFF, 0xFF};
-    bool     warmReset                     = false;
+    SemaphoreHandle_t mutex;
+    uint64_t          prevMatrix = 0;
+    uint64_t          keybMatrix = 0;
+    GamePadData       gamePads[2];
+    uint8_t           videoTimingMode   = 0;
+    bool              useT80            = false;
+    bool              forceTurbo        = false;
+    bool              gamepadNavigation = false;
+    bool              bypassStartScreen = false;
+    TimerHandle_t     bypassStartTimer  = nullptr;
+    bool              bypassStartCancel = false;
+    CoreInfo          coreInfo;
+    bool              enableKeyboardHandCtrlMapping = false;
+    bool              enableGamePadHandCtrlMapping  = true;
+    bool              enableGamePadKeyboardMapping  = false;
+    uint8_t           gamePadButtonScanCodes[16]    = {0};
+    unsigned          keybHandCtrl1Pressed          = 0;
+    uint8_t           keybHandCtrl1                 = 0xFF;
+    uint8_t           gamePadHandCtrl[2]            = {0xFF, 0xFF};
+    bool              warmReset                     = false;
 
     uint8_t keyboardHandCtrlButtonScanCodes[6] = {
         SCANCODE_INSERT,
@@ -128,20 +128,20 @@ public:
 
     // static void _onBypassStartTimer(TimerHandle_t xTimer) { static_cast<CoreAquariusPlus *>(pvTimerGetTimerID(xTimer))->onBypassStartTimer(); }
 
-    // void onBypassStartTimer() {
-    //     // 'Press' enter key to bypass the Aquarius start screen
-    //     if (!bypassStartCancel)
-    //         keyChar('\r', false);
-    // }
+    void onBypassStartTimer() {
+        // 'Press' enter key to bypass the Aquarius start screen
+        if (!bypassStartCancel)
+            keyChar('\r', false);
+    }
 
     bool loadBitstream(const void *data, size_t length) override {
-        coreInfo.coreType     = 1;
-        coreInfo.flags        = 0x1E;
-        coreInfo.versionMajor = 1;
-        coreInfo.versionMinor = 0;
-        snprintf(coreInfo.name, sizeof(coreInfo.name), "Aquarius+");
-
-        return true;
+        bool result = true;
+        memset(&coreInfo, 0, sizeof(coreInfo));
+        if (result) {
+            FPGA::instance()->getCoreInfo(&coreInfo);
+            applySettings();
+        }
+        return result;
     }
 
     void applySettings() {
@@ -190,40 +190,142 @@ public:
     }
 
     void aqpWriteKeybBuffer(uint8_t ch) {
-        emuState.kbBufWrite(ch);
+        auto               fpga = FPGA::instance();
+        RecursiveMutexLock lock(fpga->getMutex());
+        fpga->spiSel(true);
+        uint8_t cmd[] = {CMD_WRITE_KBBUF, ch};
+        fpga->spiTx(cmd, sizeof(cmd));
+        fpga->spiSel(false);
     }
 
     void resetCore() override {
-        emuState.warmReset();
+        auto               fpga = FPGA::instance();
+        RecursiveMutexLock lock(fpga->getMutex());
+        fpga->spiSel(true);
+        uint8_t resetCfg = 0;
+        if (useT80)
+            resetCfg |= 1;
+        if (!warmReset)
+            resetCfg |= 2;
+
+        uint8_t cmd[] = {CMD_RESET, resetCfg};
+        fpga->spiTx(cmd, sizeof(cmd));
+        fpga->spiSel(false);
+
+        warmReset = true;
+
+        // {
+        //     RecursiveMutexLock lock(mutex);
+        //     bypassStartCancel = false;
+
+        //     if (bypassStartScreen) {
+        //         xTimerReset(bypassStartTimer, pdMS_TO_TICKS(CONFIG_BYPASS_START_TIME_MS));
+        //     }
+        // }
     }
 
     void aqpForceTurbo(bool en) {
-        // auto               fpga = getFPGA();
-        // RecursiveMutexLock lock(fpga->getMutex());
-        // fpga->spiSel(true);
-        // uint8_t cfg   = en ? 1 : 0;
-        // uint8_t cmd[] = {CMD_FORCE_TURBO, cfg};
-        // fpga->spiTx(cmd, sizeof(cmd));
-        // fpga->spiSel(false);
+        auto               fpga = FPGA::instance();
+        RecursiveMutexLock lock(fpga->getMutex());
+        fpga->spiSel(true);
+        uint8_t cfg   = en ? 1 : 0;
+        uint8_t cmd[] = {CMD_FORCE_TURBO, cfg};
+        fpga->spiTx(cmd, sizeof(cmd));
+        fpga->spiSel(false);
     }
 
     void aqpUpdateKeybMatrix(uint64_t keybMatrix) {
-        memcpy(&emuState.keybMatrix, &keybMatrix, 8);
+        auto               fpga = FPGA::instance();
+        RecursiveMutexLock lock(fpga->getMutex());
+        fpga->spiSel(true);
+        uint8_t cmd[9];
+        cmd[0] = CMD_SET_KEYB_MATRIX;
+        memcpy(&cmd[1], &keybMatrix, 8);
+        fpga->spiTx(cmd, sizeof(cmd));
+        fpga->spiSel(false);
     }
 
     void aqpUpdateHandCtrl(uint8_t hctrl1, uint8_t hctrl2) {
-        emuState.ay1.portRdData[0] = hctrl1;
-        emuState.ay1.portRdData[1] = hctrl2;
+        auto               fpga = FPGA::instance();
+        RecursiveMutexLock lock(fpga->getMutex());
+        fpga->spiSel(true);
+        uint8_t cmd[] = {CMD_SET_HCTRL, hctrl1, hctrl2};
+        fpga->spiTx(cmd, sizeof(cmd));
+        fpga->spiSel(false);
     }
 
     void aqpSetVideoMode(uint8_t mode) {
-        // auto               fpga = getFPGA();
-        // RecursiveMutexLock lock(fpga->getMutex());
-        // fpga->spiSel(true);
-        // uint8_t cmd[] = {CMD_SET_VIDMODE, mode};
-        // fpga->spiTx(cmd, sizeof(cmd));
-        // fpga->spiSel(false);
+        auto               fpga = FPGA::instance();
+        RecursiveMutexLock lock(fpga->getMutex());
+        fpga->spiSel(true);
+        uint8_t cmd[] = {CMD_SET_VIDMODE, mode};
+        fpga->spiTx(cmd, sizeof(cmd));
+        fpga->spiSel(false);
     }
+
+#ifdef CONFIG_MACHINE_TYPE_AQPLUS
+    void aqpAqcuireBus() {
+        auto               fpga = FPGA::instance();
+        RecursiveMutexLock lock(fpga->getMutex());
+        fpga->spiSel(true);
+        uint8_t cmd[] = {CMD_BUS_ACQUIRE};
+        fpga->spiTx(cmd, sizeof(cmd));
+        fpga->spiSel(false);
+    }
+
+    void aqpReleaseBus() {
+        auto               fpga = FPGA::instance();
+        RecursiveMutexLock lock(fpga->getMutex());
+        fpga->spiSel(true);
+        uint8_t cmd[] = {CMD_BUS_RELEASE};
+        fpga->spiTx(cmd, sizeof(cmd));
+        fpga->spiSel(false);
+    }
+
+    void aqpWriteMem(uint16_t addr, uint8_t data) {
+        auto               fpga = FPGA::instance();
+        RecursiveMutexLock lock(fpga->getMutex());
+        fpga->spiSel(true);
+        uint8_t cmd[] = {CMD_MEM_WRITE, (uint8_t)(addr & 0xFF), (uint8_t)(addr >> 8), data};
+        fpga->spiTx(cmd, sizeof(cmd));
+        fpga->spiSel(false);
+    }
+
+    uint8_t aqpReadMem(uint16_t addr) {
+        auto               fpga = FPGA::instance();
+        RecursiveMutexLock lock(fpga->getMutex());
+        fpga->spiSel(true);
+        uint8_t cmd[] = {CMD_MEM_READ, (uint8_t)(addr & 0xFF), (uint8_t)(addr >> 8)};
+        fpga->spiTx(cmd, sizeof(cmd));
+
+        uint8_t result[2];
+        fpga->spiRx(result, 2);
+        fpga->spiSel(false);
+        return result[1];
+    }
+
+    void aqpWriteIO(uint16_t addr, uint8_t data) {
+        auto               fpga = FPGA::instance();
+        RecursiveMutexLock lock(fpga->getMutex());
+        fpga->spiSel(true);
+        uint8_t cmd[] = {CMD_IO_WRITE, (uint8_t)(addr & 0xFF), (uint8_t)(addr >> 8), data};
+        fpga->spiTx(cmd, sizeof(cmd));
+        fpga->spiSel(false);
+    }
+
+    uint8_t aqpReadIO(uint16_t addr) {
+        auto               fpga = FPGA::instance();
+        RecursiveMutexLock lock(fpga->getMutex());
+        fpga->spiSel(true);
+        uint8_t cmd[] = {CMD_IO_READ, (uint8_t)(addr & 0xFF), (uint8_t)(addr >> 8)};
+        fpga->spiTx(cmd, sizeof(cmd));
+
+        uint8_t result[2];
+        fpga->spiRx(result, 2);
+        fpga->spiSel(false);
+        return result[1];
+    }
+#endif
 
     bool handControllerEmulate(unsigned scanCode, bool keyDown) {
         keybHandCtrl1 = 0xFF;
@@ -296,7 +398,7 @@ public:
     }
 
     bool keyScancode(uint8_t modifiers, unsigned scanCode, bool keyDown) override {
-        // RecursiveMutexLock lock(mutex);
+        RecursiveMutexLock lock(mutex);
 
         // Hand controller emulation
         if (handControllerEmulate(scanCode, keyDown)) {
@@ -416,7 +518,11 @@ public:
                     return true;
                 } else if (combinedModifiers == (ModLShift | ModLCtrl)) {
                     // CTRL-SHIFT-ESCAPE -> reset ESP32 (somewhat equivalent to power cycle)
-                    emuState.coldReset();
+#ifdef CONFIG_MACHINE_TYPE_AQPLUS
+                    aqpAqcuireBus();
+                    resetCore();
+#endif
+                    esp_restart();
                     return true;
                 }
             }
@@ -433,13 +539,13 @@ public:
     }
 
     void keyChar(uint8_t ch, bool isRepeat) override {
-        // RecursiveMutexLock lock(mutex);
+        RecursiveMutexLock lock(mutex);
         bypassStartCancel = true;
         aqpWriteKeybBuffer(ch);
     }
 
     void mouseReport(int dx, int dy, uint8_t buttonMask, int dWheel, bool absPos) override {
-        // RecursiveMutexLock lock(mutex);
+        RecursiveMutexLock lock(mutex);
         // printf("mouse %d %d %d %d\n", dx, dy, buttonMask, dWheel);
 
         float sensitivity = 1.0f / (float)mouseSensitivityDiv;
@@ -539,7 +645,7 @@ public:
         if (idx > 1)
             return;
 
-        // RecursiveMutexLock lock(mutex);
+        RecursiveMutexLock lock(mutex);
 
         uint16_t pressed = (~gamePads[idx].buttons & data.buttons);
         uint16_t changed = (gamePads[idx].buttons ^ data.buttons);
@@ -590,7 +696,7 @@ public:
         if (idx > 1)
             return false;
 
-        // RecursiveMutexLock lock(mutex);
+        RecursiveMutexLock lock(mutex);
         data = gamePads[idx];
         return true;
     }
@@ -640,7 +746,7 @@ public:
     }
 
     int uartCommand(uint8_t cmd, const uint8_t *buf, size_t len) override {
-        // RecursiveMutexLock lock(mutex);
+        RecursiveMutexLock lock(mutex);
         switch (cmd) {
             case ESPCMD_GETMOUSE: {
                 cmdGetMouse();
@@ -660,7 +766,7 @@ public:
 
 #ifdef CONFIG_MACHINE_TYPE_AQPLUS
     void takeScreenshot(Menu &menu) {
-        auto               fpga = getFPGA();
+        auto               fpga = FPGA::instance();
         RecursiveMutexLock lock(fpga->getMutex());
 
         menu.drawMessage("Taking screenshot");
@@ -728,7 +834,7 @@ public:
     }
 
     void dumpCartridge(Menu &menu) {
-        auto               fpga = getFPGA();
+        auto               fpga = FPGA::instance();
         RecursiveMutexLock lock(fpga->getMutex());
 
         menu.drawMessage("Reading cartridge");
@@ -762,7 +868,7 @@ public:
         if (!hasData) {
             buf.clear();
             menu.drawMessage("No cartridge found");
-            vTaskDelay(pdMS_TO_TICKS(2000));
+            // vTaskDelay(pdMS_TO_TICKS(2000));
         } else {
             if (memcmp(buf.data(), buf.data() + 8192, 8192) == 0) {
                 // 8KB cartridge

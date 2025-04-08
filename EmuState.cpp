@@ -495,3 +495,6 @@ uint8_t EmuState::kbBufRead() {
     }
     return result;
 }
+
+void esp_restart() {
+}
