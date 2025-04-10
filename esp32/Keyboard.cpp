@@ -211,11 +211,8 @@ public:
                 repeat = ch;
 
                 // if (!getDisplayOverlay()->isVisible())
-                {
-                    auto core = getFpgaCore();
-                    if (core)
-                        core->keyChar(ch, false);
-                }
+                if (core)
+                    core->keyChar(ch, false);
             }
         }
     }

@@ -39,20 +39,18 @@ int main(int argc, char *argv[]) {
     auto config = Config::instance();
     config->init(appDataPath);
 
-    std::string cartRomPath;
     std::string typeInStr;
 
     int  opt;
     bool paramsOk = true;
     bool showHelp = false;
-    while ((opt = getopt(argc, argv, "hc:u:t:")) != -1) {
+    while ((opt = getopt(argc, argv, "hu:t:")) != -1) {
         if (opt == '?' || opt == ':') {
             paramsOk = false;
             break;
         }
         switch (opt) {
             case 'h': showHelp = true; break;
-            case 'c': cartRomPath = optarg; break;
             case 'u': {
 #if _WIN32
                 char pathbuf[1024];
@@ -94,14 +92,13 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Usage: %s <options>\n\n", argv[0]);
         fprintf(stderr, "Options:\n");
         fprintf(stderr, "-h          This help screen\n");
-        fprintf(stderr, "-c <path>   Set cartridge ROM path\n");
         fprintf(stderr, "-u <path>   SD card base path (default: %s)\n", config->sdCardPath.c_str());
         fprintf(stderr, "-t <string> Type in string.\n");
         fprintf(stderr, "\n");
         exit(1);
     }
 
-    UI::instance()->start(cartRomPath, typeInStr);
+    UI::instance()->start(typeInStr);
     config->save();
     return 0;
 }

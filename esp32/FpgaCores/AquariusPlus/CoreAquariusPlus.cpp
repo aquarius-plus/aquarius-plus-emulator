@@ -704,8 +704,6 @@ public:
         up->txWrite(mouseButtons);
         up->txWrite((int8_t)std::max(-128, std::min(mouseWheel, 127)));
         mouseWheel = 0;
-
-        emuState.mouseHideTimeout = 1.0f;
     }
 
     void cmdGetGameCtrl(uint8_t idx) {

@@ -19,21 +19,21 @@ public:
     }
 
     void spiSel(bool enable) override {
-        auto es = _EmuState::get();
+        auto es = EmuState::get();
         if (es) {
             es->spiSel(enable);
         }
     }
 
     void spiTx(const void *data, size_t length) override {
-        auto es = _EmuState::get();
+        auto es = EmuState::get();
         if (es) {
             es->spiTx(data, length);
         }
     }
 
     void spiRx(void *buf, size_t length) override {
-        auto es = _EmuState::get();
+        auto es = EmuState::get();
         if (es) {
             es->spiRx(buf, length);
         }

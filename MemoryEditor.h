@@ -44,18 +44,18 @@ struct MemoryEditor {
     void        drawPreviewData(size_t addr, const ImU8 *mem_data, size_t mem_size, ImGuiDataType data_type, DataFormat data_format, char *out_buf, size_t out_buf_size) const;
 
     // Settings
-    bool  open                                        = true;                        // set to false when drawWindow() was closed. ignore if not using drawWindow().
-    bool  readOnly                                    = false;                       // disable any editing.
-    int   cols                                        = 16;                          // number of columns to display.
-    bool  optShowOptions                              = true;                        // display options button/context menu. when disabled, options will be locked unless you provide your own UI for them.
-    bool  optShowDataPreview                          = false;                       // display a footer previewing the decimal/binary/hex/float representation of the currently selected bytes.
-    int   optMidColsCount                             = 8;                           // set to 0 to disable extra spacing between every mid-cols.
-    int   optAddrDigitsCount                          = 0;                           // number of addr digits to display (default calculated based on maximum displayed addr).
-    float optFooterExtraHeight                        = 0.0f;                        // space to reserve at the bottom of the widget to add custom widgets
-    ImU32 highlightColor                              = IM_COL32(255, 255, 255, 50); // background color of highlighted bytes.
-    ImU8 (*readFn)(const ImU8 *data, size_t off)      = nullptr;                     // optional handler to read bytes.
-    void (*writeFn)(ImU8 *data, size_t off, ImU8 d)   = nullptr;                     // optional handler to write bytes.
-    bool (*highlightFn)(const ImU8 *data, size_t off) = nullptr;                     // optional handler to return Highlight property (to support non-contiguous highlighting).
+    bool                                                open                 = true;                        // set to false when drawWindow() was closed. ignore if not using drawWindow().
+    bool                                                readOnly             = false;                       // disable any editing.
+    int                                                 cols                 = 16;                          // number of columns to display.
+    bool                                                optShowOptions       = true;                        // display options button/context menu. when disabled, options will be locked unless you provide your own UI for them.
+    bool                                                optShowDataPreview   = false;                       // display a footer previewing the decimal/binary/hex/float representation of the currently selected bytes.
+    int                                                 optMidColsCount      = 8;                           // set to 0 to disable extra spacing between every mid-cols.
+    int                                                 optAddrDigitsCount   = 0;                           // number of addr digits to display (default calculated based on maximum displayed addr).
+    float                                               optFooterExtraHeight = 0.0f;                        // space to reserve at the bottom of the widget to add custom widgets
+    ImU32                                               highlightColor       = IM_COL32(255, 255, 255, 50); // background color of highlighted bytes.
+    std::function<ImU8(const ImU8 *data, size_t off)>   readFn;                                             // optional handler to read bytes.
+    std::function<void(ImU8 *data, size_t off, ImU8 d)> writeFn;                                            // optional handler to write bytes.
+    bool (*highlightFn)(const ImU8 *data, size_t off) = nullptr;                                            // optional handler to return Highlight property (to support non-contiguous highlighting).
 
     // [Internal State]
     bool          contentsWidthChanged = false;

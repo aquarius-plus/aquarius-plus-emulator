@@ -41,10 +41,10 @@ extern "C" {
 #endif
 
 /** Function type to emulate data read. */
-typedef uint8_t (*Z80DataIn)(size_t param, uint16_t address);
+typedef uint8_t (*Z80DataIn)(uintptr_t param, uint16_t address);
 
 /** Function type to emulate data write. */
-typedef void (*Z80DataOut)(size_t param, uint16_t address, uint8_t data);
+typedef void (*Z80DataOut)(uintptr_t param, uint16_t address, uint8_t data);
 
 /**
  * A Z80 register set.
@@ -90,11 +90,11 @@ typedef struct
 
     Z80DataIn  memRead;
     Z80DataOut memWrite;
-    size_t     memParam;
+    uintptr_t  memParam;
 
     Z80DataIn  ioRead;
     Z80DataOut ioWrite;
-    size_t     ioParam;
+    uintptr_t  ioParam;
 
     uint8_t  halted;
     unsigned tstates;

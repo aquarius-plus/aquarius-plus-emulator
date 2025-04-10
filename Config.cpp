@@ -1,5 +1,4 @@
 #include "Config.h"
-#include "cJSON.h"
 #include "EmuState.h"
 #include "Keyboard.h"
 
@@ -18,33 +17,6 @@ void Config::init(const std::string &_appDataPath) {
     save();
 }
 
-static std::string getStringValue(cJSON *parent, const std::string &key, const std::string &defaultValue) {
-    if (auto obj = cJSON_GetObjectItem(parent, key.c_str())) {
-        auto value = cJSON_GetStringValue(obj);
-        if (value)
-            return value;
-    }
-    return defaultValue;
-}
-
-static bool getBoolValue(cJSON *parent, const std::string &key, bool defaultValue) {
-    if (auto obj = cJSON_GetObjectItem(parent, key.c_str())) {
-        if (cJSON_IsBool(obj)) {
-            return cJSON_IsTrue(obj);
-        }
-    }
-    return defaultValue;
-}
-
-static int getIntValue(cJSON *parent, const std::string &key, int defaultValue) {
-    if (auto obj = cJSON_GetObjectItem(parent, key.c_str())) {
-        if (cJSON_IsNumber(obj)) {
-            return (int)cJSON_GetNumberValue(obj);
-        }
-    }
-    return defaultValue;
-}
-
 void Config::load() {
     std::string jsonStr = "{}";
 
@@ -58,22 +30,19 @@ void Config::load() {
         sdCardPath     = getStringValue(root, "sdCardPath", "");
         asmListingPath = getStringValue(root, "asmListingPath", "");
 
-        wndPosX                 = getIntValue(root, "wndPosX", SDL_WINDOWPOS_CENTERED);
-        wndPosY                 = getIntValue(root, "wndPosY", SDL_WINDOWPOS_CENTERED);
-        wndWidth                = getIntValue(root, "wndWidth", VIDEO_WIDTH);
-        wndHeight               = getIntValue(root, "wndHeight", VIDEO_HEIGHT * 2);
-        enableSound             = getBoolValue(root, "enableSound", true);
-        enableMouse             = getBoolValue(root, "enableMouse", true);
-        fontScale2x             = getBoolValue(root, "fontScale2x", false);
-        emuState.enableDebugger = getBoolValue(root, "enableDebugger", false);
+        wndPosX        = getIntValue(root, "wndPosX", SDL_WINDOWPOS_CENTERED);
+        wndPosY        = getIntValue(root, "wndPosY", SDL_WINDOWPOS_CENTERED);
+        wndWidth       = getIntValue(root, "wndWidth", VIDEO_WIDTH);
+        wndHeight      = getIntValue(root, "wndHeight", VIDEO_HEIGHT * 2);
+        enableSound    = getBoolValue(root, "enableSound", true);
+        enableMouse    = getBoolValue(root, "enableMouse", true);
+        fontScale2x    = getBoolValue(root, "fontScale2x", false);
+        enableDebugger = getBoolValue(root, "enableDebugger", false);
 
         displayScaling = (DisplayScaling)getIntValue(root, "displayScaling", (int)DisplayScaling::Linear);
 
         Keyboard::instance()->setKeyLayout((KeyLayout)getIntValue(root, "keyLayout", 0));
 
-        handCtrlEmulation = getBoolValue(root, "handCtrlEmulation", false);
-
-        // showScreenWindow    = getBoolValue(root, "showScreenWindow", false);
         showMemEdit         = getBoolValue(root, "showMemEdit", false);
         showCpuState        = getBoolValue(root, "showCpuState", false);
         showIoRegsWindow    = getBoolValue(root, "showIoRegsWindow", false);
@@ -84,44 +53,12 @@ void Config::load() {
         showEspInfo         = getBoolValue(root, "showEspInfo", false);
         stopOnHalt          = getBoolValue(root, "stopOnHalt", false);
 
+        auto emuState = EmuState::get();
+        if (emuState) {
+            emuState->loadConfig(root);
+        }
+
         memEditMemSelect = getIntValue(root, "memEditMemSelect", 0);
-
-        auto breakpoints = cJSON_GetObjectItem(root, "breakpoints");
-        if (cJSON_IsArray(breakpoints)) {
-            cJSON *breakpoint;
-            cJSON_ArrayForEach(breakpoint, breakpoints) {
-                if (!cJSON_IsObject(breakpoint))
-                    continue;
-
-                EmuState::Breakpoint bp;
-                bp.addr    = getIntValue(breakpoint, "addr", 0);
-                bp.name    = getStringValue(breakpoint, "name", "");
-                bp.enabled = getBoolValue(breakpoint, "enabled", false);
-                bp.type    = getIntValue(breakpoint, "type", 0);
-                bp.onR     = getBoolValue(breakpoint, "onR", false);
-                bp.onW     = getBoolValue(breakpoint, "onW", false);
-                bp.onX     = getBoolValue(breakpoint, "onX", false);
-                emuState.breakpoints.push_back(bp);
-            }
-        }
-        emuState.enableBreakpoints = getBoolValue(root, "enableBreakpoints", false);
-        emuState.traceEnable       = getBoolValue(root, "traceEnable", false);
-        emuState.traceDepth        = getIntValue(root, "traceDepth", 16);
-
-        auto watches = cJSON_GetObjectItem(root, "watches");
-        if (cJSON_IsArray(watches)) {
-            cJSON *watch;
-            cJSON_ArrayForEach(watch, watches) {
-                if (!cJSON_IsObject(watch))
-                    continue;
-
-                EmuState::Watch w;
-                w.addr = getIntValue(watch, "addr", 0);
-                w.name = getStringValue(watch, "name", "");
-                w.type = (EmuState::WatchType)getIntValue(watch, "type", 0);
-                emuState.watches.push_back(w);
-            }
-        }
 
         cJSON_free(root);
     }
@@ -146,15 +83,12 @@ void Config::save() {
     cJSON_AddBoolToObject(root, "enableSound", enableSound);
     cJSON_AddBoolToObject(root, "enableMouse", enableMouse);
     cJSON_AddBoolToObject(root, "fontScale2x", fontScale2x);
-    cJSON_AddBoolToObject(root, "enableDebugger", emuState.enableDebugger);
+    cJSON_AddBoolToObject(root, "enableDebugger", enableDebugger);
 
     cJSON_AddNumberToObject(root, "displayScaling", (int)displayScaling);
 
     cJSON_AddNumberToObject(root, "keyLayout", (int)Keyboard::instance()->getKeyLayout());
 
-    cJSON_AddBoolToObject(root, "handCtrlEmulation", handCtrlEmulation);
-
-    // cJSON_AddBoolToObject(root, "showScreenWindow", showScreenWindow);
     cJSON_AddBoolToObject(root, "showMemEdit", showMemEdit);
     cJSON_AddBoolToObject(root, "showCpuState", showCpuState);
     cJSON_AddBoolToObject(root, "showIoRegsWindow", showIoRegsWindow);
@@ -167,32 +101,9 @@ void Config::save() {
 
     cJSON_AddNumberToObject(root, "memEditMemSelect", memEditMemSelect);
 
-    cJSON_AddBoolToObject(root, "enableBreakpoints", emuState.enableBreakpoints);
-    cJSON_AddBoolToObject(root, "traceEnable", emuState.traceEnable);
-    cJSON_AddNumberToObject(root, "traceDepth", emuState.traceDepth);
-
-    auto breakpoints = cJSON_AddArrayToObject(root, "breakpoints");
-    for (auto &bp : emuState.breakpoints) {
-        auto breakpoint = cJSON_CreateObject();
-
-        cJSON_AddNumberToObject(breakpoint, "addr", bp.addr);
-        cJSON_AddStringToObject(breakpoint, "name", bp.name.c_str());
-        cJSON_AddBoolToObject(breakpoint, "enabled", bp.enabled);
-        cJSON_AddNumberToObject(breakpoint, "type", bp.type);
-        cJSON_AddBoolToObject(breakpoint, "onR", bp.onR);
-        cJSON_AddBoolToObject(breakpoint, "onW", bp.onW);
-        cJSON_AddBoolToObject(breakpoint, "onX", bp.onX);
-
-        cJSON_AddItemToArray(breakpoints, breakpoint);
-    }
-
-    auto watches = cJSON_AddArrayToObject(root, "watches");
-    for (auto &w : emuState.watches) {
-        auto watch = cJSON_CreateObject();
-        cJSON_AddNumberToObject(watch, "addr", w.addr);
-        cJSON_AddStringToObject(watch, "name", w.name.c_str());
-        cJSON_AddNumberToObject(watch, "type", (int)w.type);
-        cJSON_AddItemToArray(watches, watch);
+    auto emuState = EmuState::get();
+    if (emuState) {
+        emuState->saveConfig(root);
     }
 
     std::ofstream ofs(configPath);
