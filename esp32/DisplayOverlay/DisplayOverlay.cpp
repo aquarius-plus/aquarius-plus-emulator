@@ -1,6 +1,7 @@
 #include "DisplayOverlay.h"
 #include "FPGA.h"
 #include "Menus.h"
+#include "ovl_font.h"
 
 class DisplayOverlayInt : public DisplayOverlay {
 public:
@@ -123,7 +124,7 @@ public:
 
             // Load font
             // extern const uint8_t ovlFontStart[] asm("_binary_ovl_font_chr_start");
-            // FPGA::instance()->setOverlayFont(ovlFontStart);
+            FPGA::instance()->setOverlayFont(ovlFontStart);
 
             overlayVisible = false;
             setVisible(overlayVisible);

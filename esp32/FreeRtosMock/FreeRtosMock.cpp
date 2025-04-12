@@ -87,11 +87,12 @@ BaseType_t xQueueSend(QueueHandle_t xQueue, const void *const pvItemToQueue, Tic
                 xQueue->cvSend.notify_one();
                 return pdTRUE;
             }
-        }
-        if (!xQueue->cvReceive.wait_until(lock, tpUntil, [xQueue] {
-                return xQueue->count < xQueue->length;
-            })) {
-            return pdFALSE;
+
+            if (!xQueue->cvReceive.wait_until(lock, tpUntil, [xQueue] { return xQueue->count < xQueue->length; })) {
+                return pdFALSE;
+            }
+
+            lock.unlock();
         }
     }
     return pdFALSE;
@@ -103,7 +104,7 @@ BaseType_t xQueueReceive(QueueHandle_t xQueue, void *const pvBuffer, TickType_t 
     std::unique_lock lock(xQueue->mutex, std::defer_lock);
     while (1) {
         if (lock.try_lock_until(tpUntil)) {
-            if (xQueue->count < xQueue->length) {
+            if (xQueue->count > 0) {
                 // Copy item from queue
                 memcpy(pvBuffer, xQueue->buf + xQueue->itemSize * xQueue->rdIdx, xQueue->itemSize);
                 xQueue->count--;
@@ -113,11 +114,12 @@ BaseType_t xQueueReceive(QueueHandle_t xQueue, void *const pvBuffer, TickType_t 
                 xQueue->cvReceive.notify_one();
                 return pdTRUE;
             }
-        }
-        if (!xQueue->cvSend.wait_until(lock, tpUntil, [xQueue] {
-                return xQueue->count > 0;
-            })) {
-            return pdFALSE;
+
+            if (!xQueue->cvSend.wait_until(lock, tpUntil, [xQueue] { return xQueue->count > 0; })) {
+                return pdFALSE;
+            }
+
+            lock.unlock();
         }
     }
     return pdFALSE;

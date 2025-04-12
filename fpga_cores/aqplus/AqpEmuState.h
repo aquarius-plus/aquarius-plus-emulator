@@ -40,6 +40,10 @@ private:
         Em_Running,
     };
 
+    uint8_t  ovlFont[2048];
+    uint16_t ovlPalette[32];
+    uint16_t ovlText[1024];
+
     unsigned emulate2();
 
     void dbgWndCpuState(bool *p_open);

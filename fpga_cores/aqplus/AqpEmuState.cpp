@@ -6,6 +6,7 @@
 #include "Keyboard.h"
 #include "imgui.h"
 #include "tinyfiledialogs.h"
+#include "DisplayOverlay/DisplayOverlay.h"
 
 // 3579545 Hz -> 59659 cycles / frame
 // 7159090 Hz -> 119318 cycles / frame
@@ -31,6 +32,7 @@ AqpEmuState::AqpEmuState() {
     z80ctx.memParam = reinterpret_cast<uintptr_t>(this);
 
     loadFpgaCore(FpgaCoreType::AquariusPlus);
+    getDisplayOverlay()->init();
 
     reset(true);
 }
@@ -472,23 +474,52 @@ int AqpEmuState::cpuEmulate() {
     return delta;
 }
 
+static uint32_t col12_to_col32(uint16_t col444) {
+    unsigned r4 = (col444 >> 8) & 0xF;
+    unsigned g4 = (col444 >> 4) & 0xF;
+    unsigned b4 = (col444 >> 0) & 0xF;
+
+    unsigned r8 = (r4 << 4) | r4;
+    unsigned g8 = (g4 << 4) | g4;
+    unsigned b8 = (b4 << 4) | b4;
+
+    return (0xFF << 24) | (b8 << 16) | (g8 << 8) | (r8);
+}
+
 void AqpEmuState::getPixels(void *pixels, int pitch) {
     const uint16_t *fb = video.getFb();
 
     for (int j = 0; j < VIDEO_HEIGHT * 2; j++) {
         for (int i = 0; i < VIDEO_WIDTH; i++) {
             // Convert from RGB444 to ABGR888
-            uint16_t col444 = fb[j / 2 * VIDEO_WIDTH + i];
+            uint32_t col = col12_to_col32(fb[j / 2 * VIDEO_WIDTH + i]);
 
-            unsigned r4 = (col444 >> 8) & 0xF;
-            unsigned g4 = (col444 >> 4) & 0xF;
-            unsigned b4 = (col444 >> 0) & 0xF;
+            // Render overlay text
+            {
+                int line = j / 2;
+                if (line >= 16 && line < 216) {
+                    int idx = i - 32;
+                    if (idx >= 0 && idx < 640) {
+                        // Draw text character
+                        int      row    = (line - 16) / 8;
+                        int      column = ((i / 2) - 16) / 8;
+                        unsigned addr   = (row * 40 + column) & 0x3FF;
 
-            unsigned r8 = (r4 << 4) | r4;
-            unsigned g8 = (g4 << 4) | g4;
-            unsigned b8 = (b4 << 4) | b4;
+                        uint16_t chCol = ovlText[addr];
 
-            ((uint32_t *)((uintptr_t)pixels + j * pitch))[i] = (0xFF << 24) | (b8 << 16) | (g8 << 8) | (r8);
+                        uint8_t ch     = chCol & 0xFF;
+                        uint8_t color  = chCol >> 8;
+                        uint8_t charBm = ovlFont[ch * 8 + (line & 7)];
+                        uint8_t colIdx = (charBm & (1 << (7 - ((i / 2) & 7)))) ? (color >> 4) : (color & 0xF);
+
+                        uint16_t col4444 = ovlPalette[colIdx];
+                        if ((col4444 >> 12) >= 8)
+                            col = col12_to_col32(ovlPalette[colIdx]);
+                    }
+                }
+            }
+
+            ((uint32_t *)((uintptr_t)pixels + j * pitch))[i] = col;
         }
     }
 }
@@ -693,6 +724,27 @@ void AqpEmuState::spiSel(bool enable) {
             case CMD_WRITE_KBBUF: {
                 if (txBuf.size() >= 1 + 1) {
                     kbBufWrite(txBuf[1]);
+                }
+                break;
+            }
+
+            case CMD_OVL_TEXT: {
+                if (txBuf.size() >= 1 + 2048) {
+                    memcpy(ovlText, &txBuf[1], 2048);
+                }
+                break;
+            }
+
+            case CMD_OVL_PALETTE: {
+                if (txBuf.size() >= 1 + 32) {
+                    memcpy(ovlPalette, &txBuf[1], 32);
+                }
+                break;
+            }
+
+            case CMD_OVL_FONT: {
+                if (txBuf.size() >= 1 + 2048) {
+                    memcpy(ovlFont, &txBuf[1], 2048);
                 }
                 break;
             }
