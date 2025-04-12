@@ -16,6 +16,10 @@ endif()
 
 add_executable(${CMAKE_PROJECT_NAME})
 
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE SYSTEM
+    esp32/mocks
+)
+
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     .
     lib
@@ -64,7 +68,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     esp32/DisplayOverlay/DisplayOverlay.cpp
     esp32/DisplayOverlay/Menu.cpp
     esp32/DisplayOverlay/Menus.cpp
-    esp32/FreeRtosMock/FreeRtosMock.cpp
+    esp32/mocks/FreeRtosMock.cpp
+    esp32/mocks/nvs_flash.cpp
     esp32/USB/USBHost.cpp
 
     external/cjson/cJSON.c

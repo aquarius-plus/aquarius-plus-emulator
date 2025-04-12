@@ -4,7 +4,7 @@
 // #include "WiFiMenu.h"
 // #include "BluetoothMenu.h"
 // #include "TimeZoneMenu.h"
-// #include "KeyboardLayoutMenu.h"
+#include "KeyboardLayoutMenu.h"
 // #include "GitHubUpdateMenu.h"
 // #include "SdCardUpdateMenu.h"
 // #include "EspStatsMenu.h"
@@ -70,15 +70,15 @@ public:
             // };
         }
         {
-            // char tmp[40];
-            // snprintf(tmp, sizeof(tmp), "Keyboard layout: %s", Keyboard::instance()->getKeyLayoutName(Keyboard::instance()->getKeyLayout()).c_str());
+            char tmp[40];
+            snprintf(tmp, sizeof(tmp), "Keyboard layout: %s", Keyboard::instance()->getKeyLayoutName(Keyboard::instance()->getKeyLayout()).c_str());
 
-            // auto &item   = items.emplace_back(MenuItemType::subMenu, tmp);
-            // item.onEnter = [&]() {
-            //     KeyboardLayoutMenu subMenu;
-            //     subMenu.show();
-            //     setNeedsUpdate();
-            // };
+            auto &item   = items.emplace_back(MenuItemType::subMenu, tmp);
+            item.onEnter = [&]() {
+                KeyboardLayoutMenu subMenu;
+                subMenu.show();
+                setNeedsUpdate();
+            };
         }
         items.emplace_back(MenuItemType::separator);
         // {
@@ -95,20 +95,20 @@ public:
         //         subMenu.show();
         //     };
         // }
-        // {
-        //     auto &item   = items.emplace_back(MenuItemType::subMenu, "Factory reset");
-        //     item.onEnter = [&]() {
-        //         drawMessage("Are you sure? (Type 'y' to continue)");
-        //         int ch = Keyboard::instance()->getKey(portMAX_DELAY);
-        //         if (ch == 'y') {
-        //             drawMessage("Erasing settings...");
-        //             ESP_ERROR_CHECK(nvs_flash_erase());
-        //             ESP_ERROR_CHECK(nvs_flash_init());
-        //             drawMessage("Restarting system...");
-        //             esp_restart();
-        //         }
-        //     };
-        // }
+        {
+            auto &item   = items.emplace_back(MenuItemType::subMenu, "Factory reset");
+            item.onEnter = [&]() {
+                drawMessage("Are you sure? (Type 'y' to continue)");
+                int ch = Keyboard::instance()->getKey(portMAX_DELAY);
+                if (ch == 'y') {
+                    drawMessage("Erasing settings...");
+                    ESP_ERROR_CHECK(nvs_flash_erase());
+                    ESP_ERROR_CHECK(nvs_flash_init());
+                    drawMessage("Restarting system...");
+                    esp_restart();
+                }
+            };
+        }
         // items.emplace_back(MenuItemType::separator);
         // {
         //     auto &item   = items.emplace_back(MenuItemType::subMenu, "ESP stats");

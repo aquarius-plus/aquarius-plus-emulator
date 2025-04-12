@@ -17,3 +17,23 @@ bool startsWith(const std::string &s1, const std::string &s2, bool caseSensitive
         return (strncasecmp(s1.c_str(), s2.c_str(), s2.size()) == 0);
     }
 }
+
+#include "VFS.h"
+bool createPath(const std::string &path) {
+    std::vector<std::string> pathElements;
+    splitPath(path, pathElements);
+
+    auto vfs = getSDCardVFS();
+
+    std::string subPath;
+    for (auto &elem : pathElements) {
+        subPath = subPath + elem + '/';
+        if (subPath == "/")
+            continue;
+
+        int res = vfs->mkdir(subPath);
+        if (res != 0 && res != ERR_EXISTS)
+            return false;
+    }
+    return true;
+}

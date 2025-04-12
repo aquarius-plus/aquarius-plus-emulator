@@ -31,7 +31,9 @@ AqpEmuState::AqpEmuState() {
     z80ctx.memWrite = _memWrite;
     z80ctx.memParam = reinterpret_cast<uintptr_t>(this);
 
+    FPGA::instance()->init();
     loadFpgaCore(FpgaCoreType::AquariusPlus);
+
     getDisplayOverlay()->init();
 
     reset(true);

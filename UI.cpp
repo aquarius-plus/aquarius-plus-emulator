@@ -539,6 +539,7 @@ public:
     }
 
     void wndScreen(bool *p_open) {
+        ImGui::SetNextWindowSizeConstraints(ImVec2(100, 100), ImVec2(FLT_MAX, FLT_MAX));
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
         bool open = ImGui::Begin("Screen", p_open, ImGuiWindowFlags_None);
         ImGui::PopStyleVar();
