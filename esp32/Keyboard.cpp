@@ -1,9 +1,11 @@
 #include "Keyboard.h"
+#include "FPGA.h"
 #include "FpgaCore.h"
+#include "DisplayOverlay/DisplayOverlay.h"
 #include "AqKeyboardDefs.h"
-#include <SDL.h>
-#include "EmuState.h"
-#include "Config.h"
+#include "USBHost.h"
+
+static const char *TAG = "Keyboard";
 
 enum {
     LedNumLock    = (1 << 0),
@@ -144,35 +146,104 @@ static ComposeCombo composeCombos[] = {
     {"\"y", 0xFF},
 };
 
+#ifdef CONFIG_MACHINE_TYPE_MORPHBOOK
+static const uint8_t morphBookKeyLut[54] = {
+    SCANCODE_ESCAPE,      //  0: Esc
+    SCANCODE_1,           //  1: 1
+    SCANCODE_TAB,         //  2: Tab
+    SCANCODE_Q,           //  3: Q
+    SCANCODE_LALT,        //  4: Modifier: Left Alt
+    SCANCODE_A,           //  5: A
+    SCANCODE_LSHIFT,      //  6: Modifier: Left Shift
+    0,                    //  7:
+    SCANCODE_LCTRL,       //  8: Modifier: Left Ctrl
+    SCANCODE_2,           //  9: 2
+    SCANCODE_3,           // 10: 3
+    SCANCODE_W,           // 11: W
+    SCANCODE_E,           // 12: E
+    SCANCODE_S,           // 13: S
+    SCANCODE_D,           // 14: D
+    SCANCODE_Z,           // 15: Z
+    SCANCODE_X,           // 16: X
+    0,                    // 17: Left Fn
+    SCANCODE_4,           // 18: 4
+    SCANCODE_5,           // 19: 5
+    SCANCODE_R,           // 20: R
+    SCANCODE_T,           // 21: T
+    SCANCODE_F,           // 22: F
+    SCANCODE_G,           // 23: G
+    SCANCODE_C,           // 24: C
+    SCANCODE_V,           // 25: V
+    SCANCODE_SPACE,       // 26: Space
+    SCANCODE_6,           // 27: 6
+    SCANCODE_7,           // 28: 7
+    SCANCODE_Y,           // 29: Y
+    SCANCODE_U,           // 30: U
+    SCANCODE_H,           // 31: H
+    SCANCODE_J,           // 32: J
+    SCANCODE_B,           // 33: B
+    SCANCODE_N,           // 34: N
+    SCANCODE_RIGHT,       // 35: Right
+    SCANCODE_8,           // 36: 8
+    SCANCODE_9,           // 37: 9
+    SCANCODE_I,           // 38: I
+    SCANCODE_O,           // 39: O
+    SCANCODE_K,           // 40: K
+    SCANCODE_L,           // 41: L
+    SCANCODE_M,           // 42: M
+    SCANCODE_PERIOD,      // 43: .
+    SCANCODE_LEFT,        // 44: Left
+    SCANCODE_0,           // 45: 0
+    SCANCODE_BACKSPACE,   // 46: Bksp
+    SCANCODE_P,           // 47: P
+    SCANCODE_LEFTBRACKET, // 48: [
+    SCANCODE_RETURN,      // 49: Enter
+    0,                    // 50:
+    SCANCODE_UP,          // 51: Up
+    0,                    // 52: Right Fn
+    SCANCODE_DOWN,        // 53: Down
+};
+#endif
+
 class KeyboardInt : public Keyboard {
 public:
-    uint8_t   modifiers    = 0;
-    uint8_t   repeat       = 0;
-    unsigned  pressCounter = 0;
-    uint8_t   keyMode      = 3;
-    KeyLayout curLayout    = KeyLayout::US;
-    uint8_t   leds         = 0;
-    uint8_t   composeFirst = 0;
-
-    uint64_t prevMatrix    = 0;
-    uint64_t keybMatrix    = 0;
-    uint8_t  prevHandCtrl1 = 0xFF;
-    uint8_t  prevHandCtrl2 = 0xFF;
-    uint8_t  handCtrl1     = 0xFF;
-    uint8_t  handCtrl2     = 0xFF;
+#ifdef CONFIG_MACHINE_TYPE_MORPHBOOK
+    uint64_t prevKeys = 0;
+#endif
+    uint8_t           modifiers = 0;
+    QueueHandle_t     keyQueue;
+    QueueHandle_t     scanCodeQueue;
+    uint8_t           repeat       = 0;
+    unsigned          pressCounter = 0;
+    uint8_t           keyMode      = 3;
+    SemaphoreHandle_t mutex;
+    KeyLayout         curLayout    = KeyLayout::US;
+    uint8_t           leds         = 0;
+    uint8_t           composeFirst = 0;
 
     KeyboardInt() {
+        mutex         = xSemaphoreCreateRecursiveMutex();
+        keyQueue      = xQueueCreate(128, 1);
+        scanCodeQueue = xQueueCreate(1, 1);
+
+        auto timer = xTimerCreate("keyRepeat", pdMS_TO_TICKS(16), pdTRUE, this, _keyRepeatTimer);
+        xTimerStart(timer, 0);
     }
 
     void setKeyMode(uint8_t mode) override {
+        RecursiveMutexLock lock(mutex);
         keyMode = mode;
     }
 
     uint8_t getKeyMode() override {
+        RecursiveMutexLock lock(mutex);
         return keyMode;
     }
 
-    void keyRepeatTimer() override {
+    static void _keyRepeatTimer(TimerHandle_t xTimer) { static_cast<KeyboardInt *>(pvTimerGetTimerID(xTimer))->keyRepeatTimer(); }
+    void        keyRepeatTimer() {
+        RecursiveMutexLock lock(mutex);
+
         if (repeat == 0) {
             pressCounter = 0;
             return;
@@ -180,7 +251,9 @@ public:
 
         pressCounter++;
         if (pressCounter > 30 && pressCounter % 3 == 0) {
-            if ((keyMode & 4) != 0 /*&& !getDisplayOverlay()->isVisible()*/) {
+            xQueueSend(keyQueue, &repeat, 0);
+
+            if ((keyMode & 4) != 0 && !getDisplayOverlay()->isVisible()) {
                 auto core = getFpgaCore();
                 if (core)
                     core->keyChar(repeat, true);
@@ -188,13 +261,94 @@ public:
         }
     }
 
+#ifdef CONFIG_MACHINE_TYPE_MORPHBOOK
+    int translateKeyToScanCode(unsigned scanCode, bool leftFn, bool rightFn) {
+        int result = morphBookKeyLut[scanCode];
+
+        // Handle Fn keys
+        // clang-format off
+        // #pragma GCC diagnostic ignored "-Wmisleading-indentation"
+        switch (result) {
+            case SCANCODE_ESCAPE:      if      (leftFn || rightFn) result = SCANCODE_GRAVE;        break;
+            case SCANCODE_1:           if      (leftFn && rightFn) result = SCANCODE_F11;          
+                                       else if (leftFn || rightFn) result = SCANCODE_F1;           
+                                       break;
+            case SCANCODE_2:           if      (leftFn && rightFn) result = SCANCODE_F12;          
+                                       else if (leftFn || rightFn) result = SCANCODE_F2;           
+                                       break;
+            case SCANCODE_3:           if      (leftFn || rightFn) result = SCANCODE_F3;           break;
+            case SCANCODE_4:           if      (leftFn || rightFn) result = SCANCODE_F4;           break;
+            case SCANCODE_5:           if      (leftFn || rightFn) result = SCANCODE_F5;           break;
+            case SCANCODE_6:           if      (leftFn || rightFn) result = SCANCODE_F6;           break;
+            case SCANCODE_7:           if      (leftFn || rightFn) result = SCANCODE_F7;           break;
+            case SCANCODE_8:           if      (leftFn || rightFn) result = SCANCODE_F8;           break;
+            case SCANCODE_9:           if      (leftFn && rightFn) result = SCANCODE_F9;           
+                                       else if (leftFn || rightFn) result = SCANCODE_MINUS;        
+                                       break;
+            case SCANCODE_0:           if      (leftFn && rightFn) result = SCANCODE_F10;          
+                                       else if (leftFn || rightFn) result = SCANCODE_EQUALS;       
+                                       break;
+            case SCANCODE_BACKSPACE:   if      (leftFn || rightFn) result = SCANCODE_DELETE;       break;
+            case SCANCODE_LEFTBRACKET: if      (leftFn || rightFn) result = SCANCODE_RIGHTBRACKET; break;
+            case SCANCODE_J:           if      (leftFn || rightFn) result = SCANCODE_SEMICOLON;    break;
+            case SCANCODE_K:           if      (leftFn || rightFn) result = SCANCODE_APOSTROPHE;   break;
+            case SCANCODE_L:           if      (leftFn || rightFn) result = SCANCODE_BACKSLASH;    break;
+            case SCANCODE_M:           if      (leftFn || rightFn) result = SCANCODE_COMMA;        break;
+            case SCANCODE_PERIOD:      if      (leftFn || rightFn) result = SCANCODE_SLASH;        break;
+            case SCANCODE_UP:          if      (leftFn || rightFn) result = SCANCODE_PAGEUP;       break;
+            case SCANCODE_LEFT:        if      (leftFn || rightFn) result = SCANCODE_HOME;         break;
+            case SCANCODE_DOWN:        if      (leftFn || rightFn) result = SCANCODE_PAGEDOWN;     break;
+            case SCANCODE_RIGHT:       if      (leftFn || rightFn) result = SCANCODE_END;          break;
+            default: break;
+        }
+        // clang-format on
+
+        return result;
+    }
+
+    void updateKeys(uint64_t keys) override {
+        RecursiveMutexLock lock(mutex);
+
+        auto releasedKeys = prevKeys & ~keys;
+        auto pressedKeys  = ~prevKeys & keys;
+        prevKeys          = keys;
+
+        bool leftFn  = (keys & (1ULL << 17)) != 0;
+        bool rightFn = (keys & (1ULL << 52)) != 0;
+
+        if (releasedKeys) {
+            for (unsigned i = 0; i < 54; i++) {
+                if (releasedKeys & (1ULL << i)) {
+                    // ESP_LOGI(TAG, "key %2d released", i);
+                    auto scanCode = translateKeyToScanCode(i, leftFn, rightFn);
+                    if (scanCode >= 0) {
+                        handleScancode(scanCode, false);
+                    }
+                }
+            }
+        }
+
+        if (pressedKeys) {
+            for (unsigned i = 0; i < 54; i++) {
+                if (pressedKeys & (1ULL << i)) {
+                    // ESP_LOGI(TAG, "key %2d pressed", i);
+                    auto scanCode = translateKeyToScanCode(i, leftFn, rightFn);
+                    if (scanCode >= 0) {
+                        handleScancode(scanCode, true);
+                    }
+                }
+            }
+        }
+    }
+#endif
+
     void handleScancode(unsigned scanCode, bool keyDown) override {
-        // printf("%3d: %s\n", scanCode, keyDown ? "DOWN" : "UP");
+        RecursiveMutexLock lock(mutex);
         repeat       = 0;
         pressCounter = 0;
         if (keyDown) {
-            // uint8_t val = scanCode;
-            // xQueueSend(scanCodeQueue, &val, 0);
+            uint8_t val = scanCode;
+            xQueueSend(scanCodeQueue, &val, 0);
         }
 
         // Keyboard layout handling
@@ -202,7 +356,7 @@ public:
 
         bool stopProcessing = false;
         auto core           = getFpgaCore();
-        if (core /*&& (!getDisplayOverlay()->isVisible() || !keyDown)*/) {
+        if (core && (!getDisplayOverlay()->isVisible() || !keyDown)) {
             stopProcessing = core->keyScancode(modifiers, scanCode, keyDown);
         }
 
@@ -210,10 +364,13 @@ public:
             if (ch != 0xFF) {
                 repeat = ch;
 
-                // if (!getDisplayOverlay()->isVisible())
-                if (core)
-                    core->keyChar(ch, false);
+                if (!getDisplayOverlay()->isVisible()) {
+                    auto core = getFpgaCore();
+                    if (core)
+                        core->keyChar(ch, false);
+                }
             }
+            xQueueSend(keyQueue, &ch, 0);
         }
     }
 
@@ -335,6 +492,7 @@ public:
     int processScancode(unsigned scanCode, bool keyDown) {
         int result = -1;
 
+        // ESP_LOGI(TAG, "Key %3d %s", scanCode, keyDown ? "pressed" : "released");
         uint8_t prevLeds = leds;
 
         // Keep track of pressed modifier keys
@@ -463,7 +621,23 @@ public:
         }
 
         if (prevLeds != leds) {
+            getUSBHost()->keyboardSetLeds(leds);
         }
+        return result;
+    }
+
+    int getKey(TickType_t ticksToWait) override {
+        uint8_t result;
+        if (!xQueueReceive(keyQueue, &result, ticksToWait))
+            return -1;
+        return result;
+    }
+
+    int waitScanCode() override {
+        uint8_t result;
+        xQueueReceive(scanCodeQueue, &result, 0);
+        if (!xQueueReceive(scanCodeQueue, &result, portMAX_DELAY))
+            return -1;
         return result;
     }
 
@@ -496,25 +670,25 @@ public:
 
         if (ch == 0x1C) {
             // Delay for 100ms
-            // vTaskDelay(pdMS_TO_TICKS(100));
+            vTaskDelay(pdMS_TO_TICKS(100));
             return;
         }
         if (ch == 0x1D) {
             // Delay for 500ms
-            // vTaskDelay(pdMS_TO_TICKS(500));
+            vTaskDelay(pdMS_TO_TICKS(500));
             return;
         }
         if (ch == 0x1E) {
             // Reset
             core->resetCore();
-            // vTaskDelay(pdMS_TO_TICKS(500));
+            vTaskDelay(pdMS_TO_TICKS(500));
             return;
         }
         if (ch > '~')
             return;
 
         core->keyChar(ch, false);
-        // vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 };
 

@@ -86,8 +86,7 @@ bool startsWith(const std::string &s1, const std::string &s2, bool caseSensitive
 
 #define CONFIG_MACHINE_TYPE_AQPLUS
 
-typedef void *TimerHandle_t;
-typedef void *SemaphoreHandle_t;
+#include "FreeRtosMock/FreeRtosMock.h"
 
 class RecursiveMutexLock {
 public:
@@ -104,3 +103,5 @@ private:
 };
 
 void esp_restart();
+
+#define CONFIG_BYPASS_START_TIME_MS 3000

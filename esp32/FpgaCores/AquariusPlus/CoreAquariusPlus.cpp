@@ -7,12 +7,11 @@
 #include <math.h>
 // #include <nvs_flash.h>
 // #include "XzDecompress.h"
-// #include "DisplayOverlay/DisplayOverlay.h"
+#include "DisplayOverlay/DisplayOverlay.h"
 // #include "DisplayOverlay/KeyboardHandCtrlMappingMenu.h"
 // #include "DisplayOverlay/GamepadHandCtrlMappingMenu.h"
 // #include "DisplayOverlay/GamepadKeyboardMappingMenu.h"
 // #include "DisplayOverlay/FileListMenu.h"
-#include "EmuState.h"
 
 #include "CoreAquariusPlus.h"
 #include "AqKeyboardDefs.h"
@@ -99,17 +98,17 @@ public:
 
         memset(&coreInfo, 0, sizeof(coreInfo));
 
-        // mutex            = xSemaphoreCreateRecursiveMutex();
-        // bypassStartTimer = xTimerCreate("", pdMS_TO_TICKS(CONFIG_BYPASS_START_TIME_MS), pdFALSE, this, _onBypassStartTimer);
+        mutex            = xSemaphoreCreateRecursiveMutex();
+        bypassStartTimer = xTimerCreate("", pdMS_TO_TICKS(CONFIG_BYPASS_START_TIME_MS), pdFALSE, this, _onBypassStartTimer);
     }
 
     virtual ~CoreAquariusPlus() {
-        // vSemaphoreDelete(mutex);
-        // if (bypassStartTimer)
-        //     xTimerDelete(bypassStartTimer, portMAX_DELAY);
+        vSemaphoreDelete(mutex);
+        if (bypassStartTimer)
+            xTimerDelete(bypassStartTimer, portMAX_DELAY);
     }
 
-    // static void _onBypassStartTimer(TimerHandle_t xTimer) { static_cast<CoreAquariusPlus *>(pvTimerGetTimerID(xTimer))->onBypassStartTimer(); }
+    static void _onBypassStartTimer(TimerHandle_t xTimer) { static_cast<CoreAquariusPlus *>(pvTimerGetTimerID(xTimer))->onBypassStartTimer(); }
 
     void onBypassStartTimer() {
         // 'Press' enter key to bypass the Aquarius start screen
@@ -197,14 +196,14 @@ public:
 
         warmReset = true;
 
-        // {
-        //     RecursiveMutexLock lock(mutex);
-        //     bypassStartCancel = false;
+        {
+            RecursiveMutexLock lock(mutex);
+            bypassStartCancel = false;
 
-        //     if (bypassStartScreen) {
-        //         xTimerReset(bypassStartTimer, pdMS_TO_TICKS(CONFIG_BYPASS_START_TIME_MS));
-        //     }
-        // }
+            if (bypassStartScreen) {
+                xTimerReset(bypassStartTimer, pdMS_TO_TICKS(CONFIG_BYPASS_START_TIME_MS));
+            }
+        }
     }
 
     void aqpForceTurbo(bool en) {
@@ -636,7 +635,7 @@ public:
         // printf("idx=%u pressed=%04X\n", idx, pressed);
 
         if (idx == 0) {
-            bool overlayVisible = false; // getDisplayOverlay()->isVisible();
+            bool overlayVisible = getDisplayOverlay()->isVisible();
             auto kb             = Keyboard::instance();
 
             if (gamepadNavigation) {
@@ -849,7 +848,7 @@ public:
         if (!hasData) {
             buf.clear();
             menu.drawMessage("No cartridge found");
-            // vTaskDelay(pdMS_TO_TICKS(2000));
+            vTaskDelay(pdMS_TO_TICKS(2000));
         } else {
             if (memcmp(buf.data(), buf.data() + 8192, 8192) == 0) {
                 // 8KB cartridge
@@ -913,7 +912,6 @@ public:
     //     }
 
     void addMainMenuItems(Menu &menu) override {
-#if 0
         {
             auto &item   = menu.items.emplace_back(MenuItemType::subMenu, "Reset CPU (CTRL-ESC)");
             item.onEnter = [this]() {
@@ -924,60 +922,60 @@ public:
         {
             auto &item   = menu.items.emplace_back(MenuItemType::subMenu, "Keyboard to hand ctrl mapping");
             item.onEnter = [this]() {
-                KeyboardHandCtrlMappingMenu menu;
-                menu.enabled = enableKeyboardHandCtrlMapping;
-                memcpy(menu.buttonScanCodes, keyboardHandCtrlButtonScanCodes, sizeof(menu.buttonScanCodes));
-                menu.onChange = [this, &menu]() {
-                    enableKeyboardHandCtrlMapping = menu.enabled;
-                    memcpy(keyboardHandCtrlButtonScanCodes, menu.buttonScanCodes, sizeof(keyboardHandCtrlButtonScanCodes));
-                };
-                menu.onSave = [this, &menu]() { savePreset(menu, "map_kb_hc", menu.buttonScanCodes, sizeof(menu.buttonScanCodes)); };
-                menu.onLoad = [this, &menu]() { loadPreset("map_kb_hc", menu.buttonScanCodes, sizeof(menu.buttonScanCodes)); menu.onChange(); };
-                menu.show();
+                // KeyboardHandCtrlMappingMenu menu;
+                // menu.enabled = enableKeyboardHandCtrlMapping;
+                // memcpy(menu.buttonScanCodes, keyboardHandCtrlButtonScanCodes, sizeof(menu.buttonScanCodes));
+                // menu.onChange = [this, &menu]() {
+                //     enableKeyboardHandCtrlMapping = menu.enabled;
+                //     memcpy(keyboardHandCtrlButtonScanCodes, menu.buttonScanCodes, sizeof(keyboardHandCtrlButtonScanCodes));
+                // };
+                // menu.onSave = [this, &menu]() { savePreset(menu, "map_kb_hc", menu.buttonScanCodes, sizeof(menu.buttonScanCodes)); };
+                // menu.onLoad = [this, &menu]() { loadPreset("map_kb_hc", menu.buttonScanCodes, sizeof(menu.buttonScanCodes)); menu.onChange(); };
+                // menu.show();
             };
         }
         {
             auto &item   = menu.items.emplace_back(MenuItemType::subMenu, "Gamepad to hand ctrl mapping");
             item.onEnter = [this]() {
-                GamepadHandCtrlMappingMenu menu;
-                menu.enabled = enableGamePadHandCtrlMapping;
-                memcpy(menu.buttonNumber, gamePadButtonHandCtrlButtonIdxs, sizeof(menu.buttonNumber));
-                menu.onChange = [this, &menu]() {
-                    enableGamePadHandCtrlMapping = menu.enabled;
-                    memcpy(gamePadButtonHandCtrlButtonIdxs, menu.buttonNumber, sizeof(gamePadButtonHandCtrlButtonIdxs));
-                };
-                menu.onSave = [this, &menu]() { savePreset(menu, "map_gp_hc", menu.buttonNumber, sizeof(menu.buttonNumber)); };
-                menu.onLoad = [this, &menu]() { loadPreset("map_gp_hc", menu.buttonNumber, sizeof(menu.buttonNumber)); menu.onChange(); };
-                menu.show();
+                // GamepadHandCtrlMappingMenu menu;
+                // menu.enabled = enableGamePadHandCtrlMapping;
+                // memcpy(menu.buttonNumber, gamePadButtonHandCtrlButtonIdxs, sizeof(menu.buttonNumber));
+                // menu.onChange = [this, &menu]() {
+                //     enableGamePadHandCtrlMapping = menu.enabled;
+                //     memcpy(gamePadButtonHandCtrlButtonIdxs, menu.buttonNumber, sizeof(gamePadButtonHandCtrlButtonIdxs));
+                // };
+                // menu.onSave = [this, &menu]() { savePreset(menu, "map_gp_hc", menu.buttonNumber, sizeof(menu.buttonNumber)); };
+                // menu.onLoad = [this, &menu]() { loadPreset("map_gp_hc", menu.buttonNumber, sizeof(menu.buttonNumber)); menu.onChange(); };
+                // menu.show();
             };
         }
         {
             auto &item   = menu.items.emplace_back(MenuItemType::subMenu, "Gamepad to keyboard mapping");
             item.onEnter = [this]() {
-                GamepadKeyboardMappingMenu menu;
-                menu.enabled = enableGamePadKeyboardMapping;
-                memcpy(menu.buttonScanCodes, gamePadButtonScanCodes, sizeof(menu.buttonScanCodes));
-                menu.onChange = [this, &menu]() {
-                    enableGamePadKeyboardMapping = menu.enabled;
-                    memcpy(gamePadButtonScanCodes, menu.buttonScanCodes, sizeof(gamePadButtonScanCodes));
-                };
-                menu.onSave = [this, &menu]() { savePreset(menu, "map_gp_kb", menu.buttonScanCodes, sizeof(menu.buttonScanCodes)); };
-                menu.onLoad = [this, &menu]() { loadPreset("map_gp_kb", menu.buttonScanCodes, sizeof(menu.buttonScanCodes)); menu.onChange(); };
-                menu.show();
+                // GamepadKeyboardMappingMenu menu;
+                // menu.enabled = enableGamePadKeyboardMapping;
+                // memcpy(menu.buttonScanCodes, gamePadButtonScanCodes, sizeof(menu.buttonScanCodes));
+                // menu.onChange = [this, &menu]() {
+                //     enableGamePadKeyboardMapping = menu.enabled;
+                //     memcpy(gamePadButtonScanCodes, menu.buttonScanCodes, sizeof(gamePadButtonScanCodes));
+                // };
+                // menu.onSave = [this, &menu]() { savePreset(menu, "map_gp_kb", menu.buttonScanCodes, sizeof(menu.buttonScanCodes)); };
+                // menu.onLoad = [this, &menu]() { loadPreset("map_gp_kb", menu.buttonScanCodes, sizeof(menu.buttonScanCodes)); menu.onChange(); };
+                // menu.show();
             };
         }
         {
             auto &item  = menu.items.emplace_back(MenuItemType::onOff, "Navigate menu using gamepad");
             item.setter = [this](int newVal) {
-                gamepadNavigation = (newVal != 0);
+                // gamepadNavigation = (newVal != 0);
 
-                nvs_handle_t h;
-                if (nvs_open("settings", NVS_READWRITE, &h) == ESP_OK) {
-                    if (nvs_set_u8(h, "gamepadNav", gamepadNavigation ? 1 : 0) == ESP_OK) {
-                        nvs_commit(h);
-                    }
-                    nvs_close(h);
-                }
+                // nvs_handle_t h;
+                // if (nvs_open("settings", NVS_READWRITE, &h) == ESP_OK) {
+                //     if (nvs_set_u8(h, "gamepadNav", gamepadNavigation ? 1 : 0) == ESP_OK) {
+                //         nvs_commit(h);
+                //     }
+                //     nvs_close(h);
+                // }
             };
             item.getter = [this]() { return gamepadNavigation ? 1 : 0; };
         }
@@ -998,49 +996,49 @@ public:
         if (coreInfo.flags & FLAG_FORCE_TURBO) {
             auto &item  = menu.items.emplace_back(MenuItemType::onOff, "Force turbo mode");
             item.setter = [this](int newVal) {
-                forceTurbo = (newVal != 0);
-                aqpForceTurbo(forceTurbo);
+                // forceTurbo = (newVal != 0);
+                // aqpForceTurbo(forceTurbo);
 
-                nvs_handle_t h;
-                if (nvs_open("settings", NVS_READWRITE, &h) == ESP_OK) {
-                    if (nvs_set_u8(h, "forceTurbo", forceTurbo ? 1 : 0) == ESP_OK) {
-                        nvs_commit(h);
-                    }
-                    nvs_close(h);
-                }
+                // nvs_handle_t h;
+                // if (nvs_open("settings", NVS_READWRITE, &h) == ESP_OK) {
+                //     if (nvs_set_u8(h, "forceTurbo", forceTurbo ? 1 : 0) == ESP_OK) {
+                //         nvs_commit(h);
+                //     }
+                //     nvs_close(h);
+                // }
             };
             item.getter = [this]() { return forceTurbo ? 1 : 0; };
         }
         if (coreInfo.flags & FLAG_MOUSE_SUPPORT) {
             auto &item  = menu.items.emplace_back(MenuItemType::percentage, "Mouse sensitivity");
             item.setter = [this](int newVal) {
-                newVal = std::max(1, std::min(newVal, 8));
-                if (newVal != mouseSensitivityDiv) {
-                    mouseSensitivityDiv = newVal;
+                // newVal = std::max(1, std::min(newVal, 8));
+                // if (newVal != mouseSensitivityDiv) {
+                //     mouseSensitivityDiv = newVal;
 
-                    nvs_handle_t h;
-                    if (nvs_open("settings", NVS_READWRITE, &h) == ESP_OK) {
-                        if (nvs_set_u8(h, "mouseDiv", mouseSensitivityDiv) == ESP_OK) {
-                            nvs_commit(h);
-                        }
-                        nvs_close(h);
-                    }
-                }
+                //     nvs_handle_t h;
+                //     if (nvs_open("settings", NVS_READWRITE, &h) == ESP_OK) {
+                //         if (nvs_set_u8(h, "mouseDiv", mouseSensitivityDiv) == ESP_OK) {
+                //             nvs_commit(h);
+                //         }
+                //         nvs_close(h);
+                //     }
+                // }
             };
             item.getter = [this]() { return mouseSensitivityDiv; };
         }
         if (coreInfo.flags & FLAG_AQPLUS) {
             auto &item  = menu.items.emplace_back(MenuItemType::onOff, "Auto-bypass start screen");
             item.setter = [this](int newVal) {
-                bypassStartScreen = (newVal != 0);
+                // bypassStartScreen = (newVal != 0);
 
-                nvs_handle_t h;
-                if (nvs_open("settings", NVS_READWRITE, &h) == ESP_OK) {
-                    if (nvs_set_u8(h, "bypassStart", bypassStartScreen ? 1 : 0) == ESP_OK) {
-                        nvs_commit(h);
-                    }
-                    nvs_close(h);
-                }
+                // nvs_handle_t h;
+                // if (nvs_open("settings", NVS_READWRITE, &h) == ESP_OK) {
+                //     if (nvs_set_u8(h, "bypassStart", bypassStartScreen ? 1 : 0) == ESP_OK) {
+                //         nvs_commit(h);
+                //     }
+                //     nvs_close(h);
+                // }
             };
             item.getter = [this]() { return bypassStartScreen ? 1 : 0; };
         }
@@ -1048,42 +1046,41 @@ public:
         if (coreInfo.flags & FLAG_HAS_Z80) {
             auto &item  = menu.items.emplace_back(MenuItemType::onOff, "Use external Z80");
             item.setter = [this, &menu](int newVal) {
-                bool newUseT80 = (newVal == 0);
-                if (useT80 != newUseT80) {
-                    useT80 = (newVal == 0);
+                // bool newUseT80 = (newVal == 0);
+                // if (useT80 != newUseT80) {
+                //     useT80 = (newVal == 0);
 
-                    nvs_handle_t h;
-                    if (nvs_open("settings", NVS_READWRITE, &h) == ESP_OK) {
-                        if (nvs_set_u8(h, "useT80", useT80 ? 1 : 0) == ESP_OK) {
-                            nvs_commit(h);
-                        }
-                        nvs_close(h);
-                    }
+                //     nvs_handle_t h;
+                //     if (nvs_open("settings", NVS_READWRITE, &h) == ESP_OK) {
+                //         if (nvs_set_u8(h, "useT80", useT80 ? 1 : 0) == ESP_OK) {
+                //             nvs_commit(h);
+                //         }
+                //         nvs_close(h);
+                //     }
 
-                    menu.drawMessage("Please reset CPU");
-                    vTaskDelay(pdMS_TO_TICKS(1000));
-                }
+                //     menu.drawMessage("Please reset CPU");
+                //     vTaskDelay(pdMS_TO_TICKS(1000));
+                // }
             };
             item.getter = [this]() { return useT80 ? 0 : 1; };
         }
         if (coreInfo.flags & FLAG_VIDEO_TIMING) {
             auto &item   = menu.items.emplace_back(MenuItemType::subMenu, videoTimingMode ? "Video timing: 640x480" : "Video timing: 704x480");
             item.onEnter = [this, &menu]() {
-                videoTimingMode = (videoTimingMode == 0) ? 1 : 0;
-                aqpSetVideoMode(videoTimingMode);
+                // videoTimingMode = (videoTimingMode == 0) ? 1 : 0;
+                // aqpSetVideoMode(videoTimingMode);
 
-                nvs_handle_t h;
-                if (nvs_open("settings", NVS_READWRITE, &h) == ESP_OK) {
-                    if (nvs_set_u8(h, "videoTiming", videoTimingMode) == ESP_OK) {
-                        nvs_commit(h);
-                    }
-                    nvs_close(h);
-                }
+                // nvs_handle_t h;
+                // if (nvs_open("settings", NVS_READWRITE, &h) == ESP_OK) {
+                //     if (nvs_set_u8(h, "videoTiming", videoTimingMode) == ESP_OK) {
+                //         nvs_commit(h);
+                //     }
+                //     nvs_close(h);
+                // }
 
-                menu.setNeedsUpdate();
+                // menu.setNeedsUpdate();
             };
         }
-#endif
 #endif
     }
 

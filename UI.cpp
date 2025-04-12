@@ -31,11 +31,10 @@ public:
     SDL_GameController *gameCtrl    = nullptr;
     int                 gameCtrlIdx = -1;
     GamePadData         gamePadData;
-    bool                allowTyping       = false;
-    bool                first             = true;
-    int                 emulationSpeed    = 1;
-    uint64_t            lastKeyRepeatCall = 0;
-    bool                escapePressed     = false;
+    bool                allowTyping    = false;
+    bool                first          = true;
+    int                 emulationSpeed = 1;
+    bool                escapePressed  = false;
 
     void start(const std::string &typeInStr) override {
         auto config = Config::instance();
@@ -94,7 +93,9 @@ public:
         Audio::instance()->start();
 
         // Run main loop
+        FreeRtosMock_init();
         mainLoop();
+        FreeRtosMock_deinit();
 
         // Deinitialize
         ImGui_ImplSDLRenderer2_Shutdown();
@@ -282,13 +283,6 @@ public:
             ImGui_ImplSDL2_NewFrame();
             ImGui::NewFrame();
             ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
-
-            // Safe-guard for misbehaving video drivers that don't lock on v-sync
-            auto ticks = SDL_GetTicks64();
-            if (ticks - lastKeyRepeatCall >= 16) {
-                lastKeyRepeatCall = ticks;
-                Keyboard::instance()->keyRepeatTimer();
-            }
 
             ImVec2 menuBarSize;
             if (ImGui::BeginMainMenuBar()) {

@@ -14,7 +14,13 @@ class Keyboard {
 public:
     static Keyboard *instance();
 
+#ifdef CONFIG_MACHINE_TYPE_MORPHBOOK
+    virtual void updateKeys(uint64_t keys) = 0;
+#endif
     virtual void handleScancode(unsigned scanCode, bool keyDown) = 0;
+
+    virtual int getKey(TickType_t ticksToWait) = 0;
+    virtual int waitScanCode()                 = 0;
 
     virtual void        setKeyLayout(KeyLayout layout)     = 0;
     virtual KeyLayout   getKeyLayout()                     = 0;
@@ -24,8 +30,6 @@ public:
     virtual uint8_t getKeyMode()             = 0;
 
     virtual void pressKey(uint8_t ch) = 0;
-
-    virtual void keyRepeatTimer() = 0;
 };
 
 enum ScanCode {

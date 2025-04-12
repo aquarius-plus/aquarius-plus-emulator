@@ -48,6 +48,12 @@ public:
     virtual bool loadBitstream(const void *data, size_t length) = 0;
     virtual bool getCoreInfo(CoreInfo *info)                    = 0;
 
+#ifdef CONFIG_MACHINE_TYPE_MORPHBOOK
+    // FPGA core interface
+    virtual uint64_t getKeys()                              = 0;
+    virtual void     setVolume(uint16_t volume, bool spkEn) = 0;
+#endif
+
     // Display overlay
     virtual void setOverlayText(const uint16_t buf[1024])  = 0;
     virtual void setOverlayFont(const uint8_t buf[2048])   = 0;

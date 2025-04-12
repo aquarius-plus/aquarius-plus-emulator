@@ -138,6 +138,7 @@ public:
         if (rxBufIdx < (int)sizeof(rxBuf) - 1) {
             rxBufIdx++;
         }
+        // ESP_LOG_BUFFER_HEXDUMP(TAG, rxBuf, rxBufIdx, ESP_LOG_INFO);
 
         switch (rxBuf[0]) {
             case ESPCMD_RESET: {

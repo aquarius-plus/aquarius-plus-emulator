@@ -8,13 +8,20 @@ enum {
 
 class FPGAInt : public FPGA {
 public:
+    SemaphoreHandle_t   mutex;
+
     FPGAInt() {
     }
 
     void init() override {
+        // Create semaphore for allowing to call FPGA function from different threads
+        mutex = xSemaphoreCreateRecursiveMutex();
     }
 
     bool loadBitstream(const void *data, size_t length) override {
+        RecursiveMutexLock lock(mutex);
+        ESP_LOGI(TAG, "Starting configuration");
+
         return true;
     }
 
@@ -49,7 +56,7 @@ public:
     }
 
     void setOverlayText(const uint16_t buf[1024]) override {
-        // RecursiveMutexLock lock(mutex);
+        RecursiveMutexLock lock(mutex);
         spiSel(true);
         uint8_t cmd[] = {CMD_OVL_TEXT};
         spiTx(cmd, sizeof(cmd));
@@ -58,7 +65,7 @@ public:
     }
 
     void setOverlayFont(const uint8_t buf[2048]) override {
-        // RecursiveMutexLock lock(mutex);
+        RecursiveMutexLock lock(mutex);
         spiSel(true);
         uint8_t cmd[] = {CMD_OVL_FONT};
         spiTx(cmd, sizeof(cmd));
@@ -67,7 +74,7 @@ public:
     }
 
     void setOverlayPalette(const uint16_t buf[16]) override {
-        // RecursiveMutexLock lock(mutex);
+        RecursiveMutexLock lock(mutex);
         spiSel(true);
         uint8_t cmd[] = {CMD_OVL_PALETTE};
         spiTx(cmd, sizeof(cmd));
@@ -76,7 +83,7 @@ public:
     }
 
     SemaphoreHandle_t getMutex() override {
-        return nullptr;
+        return mutex;
     }
 };
 

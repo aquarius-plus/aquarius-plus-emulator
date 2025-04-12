@@ -27,6 +27,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     esp32/FpgaCores/AquariusPlus
     esp32/HID
     esp32/VFS
+    esp32/USB
 
     external/cjson
     external/imgui
@@ -52,15 +53,20 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     fpga_cores/aqplus/AY8910.cpp
 
     esp32/FPGA.cpp
-    esp32/FpgaCores/AquariusPlus/CoreAquariusPlus.cpp
-    esp32/FpgaCores/FpgaCore.cpp
     esp32/Keyboard.cpp
     esp32/UartProtocol.cpp
     esp32/VFS/EspVFS.cpp
     esp32/VFS/HttpVFS.cpp
     esp32/VFS/SDCardVFS.cpp
     esp32/VFS/TcpVFS.cpp
-    
+    esp32/FpgaCores/AquariusPlus/CoreAquariusPlus.cpp
+    esp32/FpgaCores/FpgaCore.cpp
+    esp32/DisplayOverlay/DisplayOverlay.cpp
+    esp32/DisplayOverlay/Menu.cpp
+    esp32/DisplayOverlay/Menus.cpp
+    esp32/FreeRtosMock/FreeRtosMock.cpp
+    esp32/USB/USBHost.cpp
+
     external/cjson/cJSON.c
     external/imgui/imgui_demo.cpp
     external/imgui/imgui_draw.cpp

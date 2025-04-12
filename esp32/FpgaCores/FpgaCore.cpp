@@ -2,7 +2,7 @@
 // #include "FPGA.h"
 
 #include "AquariusPlus/CoreAquariusPlus.h"
-// #include "DisplayOverlay/DisplayOverlay.h"
+#include "DisplayOverlay/DisplayOverlay.h"
 
 static std::shared_ptr<FpgaCore> currentCore;
 
@@ -29,6 +29,6 @@ std::shared_ptr<FpgaCore> loadFpgaCore(FpgaCoreType type, const void *data, size
     //     return nullptr;
     // }
 
-    // getDisplayOverlay()->reinit();
+    getDisplayOverlay()->reinit();
     return currentCore;
 }
