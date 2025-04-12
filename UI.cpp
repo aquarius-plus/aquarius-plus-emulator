@@ -15,6 +15,7 @@
 
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include "imgui.h"
+#include "imgui_internal.h"
 #include "imgui_impl_sdl2.h"
 #include "imgui_impl_sdlrenderer2.h"
 #include "tinyfiledialogs.h"
@@ -78,7 +79,10 @@ public:
 
         // Setup Dear ImGui context
         IMGUI_CHECKVERSION();
-        ImGui::CreateContext();
+        auto ctx                       = ImGui::CreateContext();
+        ctx->ConfigNavWindowingKeyNext = 0;
+        ctx->ConfigNavWindowingKeyPrev = 0;
+
         ImGuiIO &io    = ImGui::GetIO();
         io.IniFilename = nullptr; // imguiIniFileName.c_str();
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
