@@ -51,9 +51,6 @@
 
 #define CPU_FREQ (3579545)
 
-#define VIDEO_WIDTH  (704)
-#define VIDEO_HEIGHT (240)
-
 static inline void stripTrailingSlashes(std::string &path) {
     // Leave a slash at the start of the string intact
     while (path.size() > 2 && (path.back() == '/' || path.back() == '\\'))

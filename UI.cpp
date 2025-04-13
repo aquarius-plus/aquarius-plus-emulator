@@ -28,11 +28,13 @@ extern "C" void app_main(void);
 
 class UIInt : public UI {
 public:
-    SDL_Texture        *texture     = nullptr;
-    SDL_Window         *window      = nullptr;
-    SDL_Renderer       *renderer    = nullptr;
-    SDL_GameController *gameCtrl    = nullptr;
-    int                 gameCtrlIdx = -1;
+    SDL_Texture        *texture       = nullptr;
+    int                 textureWidth  = 0;
+    int                 textureHeight = 0;
+    SDL_Window         *window        = nullptr;
+    SDL_Renderer       *renderer      = nullptr;
+    SDL_GameController *gameCtrl      = nullptr;
+    int                 gameCtrlIdx   = -1;
     GamePadData         gamePadData;
     bool                allowTyping    = false;
     bool                first          = true;
@@ -62,14 +64,6 @@ public:
         renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_ACCELERATED);
         if (renderer == NULL) {
             fprintf(stderr, "SDL_CreateRenderer Error: %s\n", SDL_GetError());
-            SDL_Quit();
-            exit(1);
-        }
-
-        // Create screen texture
-        texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, VIDEO_WIDTH, VIDEO_HEIGHT * 2);
-        if (texture == NULL) {
-            fprintf(stderr, "SDL_CreateTexture Error: %s\n", SDL_GetError());
             SDL_Quit();
             exit(1);
         }
@@ -273,11 +267,23 @@ public:
                     Audio::instance()->putBuffer(abuf);
                 }
                 if (updateScreen) {
-                    void *pixels;
-                    int   pitch;
-                    SDL_LockTexture(texture, NULL, &pixels, &pitch);
-                    emuState->getPixels(pixels, pitch);
-                    SDL_UnlockTexture(texture);
+                    int w, h;
+                    emuState->getVideoSize(w, h);
+                    if (w != textureWidth || h != textureHeight) {
+                        if (texture) {
+                            SDL_DestroyTexture(texture);
+                        }
+                        textureWidth  = w;
+                        textureHeight = h;
+                        texture       = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, textureWidth, textureHeight);
+                    }
+                    if (texture) {
+                        void *pixels;
+                        int   pitch;
+                        SDL_LockTexture(texture, NULL, &pixels, &pitch);
+                        emuState->getPixels(pixels, pitch);
+                        SDL_UnlockTexture(texture);
+                    }
                 }
             }
 
@@ -342,14 +348,17 @@ public:
                             if (pngFile.size() < 4 || pngFile.substr(pngFile.size() - 4) != ".png")
                                 pngFile += ".png";
 
+                            int w, h;
+                            emuState->getVideoSize(w, h);
+
                             std::vector<uint32_t> tmpBuf;
-                            tmpBuf.resize(VIDEO_WIDTH * VIDEO_HEIGHT * 2);
+                            tmpBuf.resize(w * h);
                             if (emuState)
-                                emuState->getPixels(tmpBuf.data(), VIDEO_WIDTH * sizeof(uint32_t));
+                                emuState->getPixels(tmpBuf.data(), w * sizeof(uint32_t));
 
                             std::vector<unsigned char> png;
                             lodepng::State             state;
-                            unsigned                   error = lodepng::encode(png, reinterpret_cast<uint8_t *>(tmpBuf.data()), VIDEO_WIDTH, VIDEO_HEIGHT * 2, state);
+                            unsigned                   error = lodepng::encode(png, reinterpret_cast<uint8_t *>(tmpBuf.data()), w, h, state);
                             if (!error)
                                 lodepng::save_file(png, pngFile);
                         }
@@ -435,19 +444,14 @@ public:
                     // Update mouse
                     const ImVec2 p0((float)dst.x, (float)dst.y);
                     const ImVec2 p1((float)(dst.x + dst.w), (float)(dst.y + dst.h));
-                    auto         pos = (io.MousePos - p0) / (p1 - p0) * ImVec2(VIDEO_WIDTH / 2, VIDEO_HEIGHT) - ImVec2(16, 16);
-                    int          mx  = std::max(0, std::min((int)pos.x, 319));
-                    int          my  = std::max(0, std::min((int)pos.y, 199));
+                    auto         pos = (io.MousePos - p0) / (p1 - p0) * ImVec2(textureWidth, textureHeight);
 
                     uint8_t buttonMask =
                         (io.MouseDown[0] ? 1 : 0) |
                         (io.MouseDown[1] ? 2 : 0) |
                         (io.MouseDown[2] ? 4 : 0);
 
-                    auto fpgaCore = getFpgaCore();
-                    if (fpgaCore) {
-                        fpgaCore->mouseReport(mx, my, buttonMask, (int)io.MouseWheel, true);
-                    }
+                    getFpgaCore()->mouseReport(pos.x, pos.y, buttonMask, (int)io.MouseWheel, true);
                 }
             }
 
@@ -465,12 +469,12 @@ public:
         auto config = Config::instance();
 
         int sw, sh;
-        if (config->displayScaling == DisplayScaling::Integer && w >= VIDEO_WIDTH && h >= VIDEO_HEIGHT * 2) {
+        if (config->displayScaling == DisplayScaling::Integer && w >= textureWidth && h >= textureHeight) {
             // Retain aspect ratio
-            int w1 = (w / VIDEO_WIDTH) * VIDEO_WIDTH;
-            int h1 = (w1 * (VIDEO_HEIGHT * 2)) / VIDEO_WIDTH;
-            int h2 = (h / (VIDEO_HEIGHT * 2)) * (VIDEO_HEIGHT * 2);
-            int w2 = (h2 * VIDEO_WIDTH) / (VIDEO_HEIGHT * 2);
+            int w1 = (w / textureWidth) * textureWidth;
+            int h1 = (w1 * textureHeight) / textureWidth;
+            int h2 = (h / textureHeight) * textureHeight;
+            int w2 = (h2 * textureWidth) / textureHeight;
 
             if (w1 == 0 || h1 == 0) {
                 sw = w;
@@ -485,7 +489,7 @@ public:
             SDL_SetTextureScaleMode(texture, SDL_ScaleModeNearest);
 
         } else {
-            float aspect = (float)VIDEO_WIDTH / (float)(VIDEO_HEIGHT * 2);
+            float aspect = (float)textureWidth / (float)textureHeight;
 
             sh = (int)((float)h);
             sw = (int)((float)sh * aspect);
@@ -568,10 +572,7 @@ public:
                 draw_list->AddImage((ImTextureID)texture, p0, p1, {0, 0}, {1, 1});
 
                 ImGuiIO &io  = ImGui::GetIO();
-                auto     pos = (io.MousePos - p0) / (p1 - p0) * ImVec2(VIDEO_WIDTH / 2, VIDEO_HEIGHT) - ImVec2(16, 16);
-
-                int mx = std::max(0, std::min((int)pos.x, 319));
-                int my = std::max(0, std::min((int)pos.y, 199));
+                auto     pos = (io.MousePos - p0) / (p1 - p0) * ImVec2(textureWidth, textureHeight);
 
                 uint8_t buttonMask =
                     (io.MouseDown[0] ? 1 : 0) |
@@ -592,10 +593,7 @@ public:
                     update = true;
                 }
                 if (update) {
-                    auto fpgaCore = getFpgaCore();
-                    if (fpgaCore) {
-                        fpgaCore->mouseReport(mx, my, buttonMask, (int)io.MouseWheel, true);
-                    }
+                    getFpgaCore()->mouseReport(pos.x, pos.y, buttonMask, (int)io.MouseWheel, true);
                 }
             }
             allowTyping = ImGui::IsWindowFocused();

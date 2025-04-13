@@ -21,14 +21,16 @@ public:
 
     virtual void reset(bool cold = false)                        = 0;
     virtual bool emulate(int16_t *audioBuf, unsigned numSamples) = 0;
+    virtual void getVideoSize(int &w, int &h)                    = 0;
     virtual void getPixels(void *pixels, int pitch)              = 0;
-    virtual void spiSel(bool enable)                             = 0;
-    virtual void spiTx(const void *data, size_t length)          = 0;
-    virtual void spiRx(void *buf, size_t length)                 = 0;
 
-    virtual void fileMenu()                        = 0;
-    virtual void pasteText(const std::string &str) = 0;
-    virtual bool pasteIsDone()                     = 0;
+    virtual void spiSel(bool enable)                    = 0;
+    virtual void spiTx(const void *data, size_t length) = 0;
+    virtual void spiRx(void *buf, size_t length)        = 0;
+
+    virtual void fileMenu() {}
+    virtual void pasteText(const std::string &str) {}
+    virtual bool pasteIsDone() { return true; }
 
     virtual bool getDebuggerEnabled()        = 0;
     virtual void setDebuggerEnabled(bool en) = 0;

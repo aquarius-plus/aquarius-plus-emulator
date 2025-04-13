@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Common.h"
-#include "SDL.h"
 
 enum {
     VCTRL_TEXT_ENABLE       = (1 << 0),
@@ -20,9 +19,10 @@ enum {
 class AqpVideo {
 public:
     AqpVideo();
-    const uint16_t *getFb() {
-        return screen;
-    }
+    const uint16_t *getFb() { return screen; }
+
+    static const int activeWidth  = 704;
+    static const int activeHeight = 240;
 
     bool isOnVideoIrqLine() { return videoLine == videoIrqLine; }
     bool isOnStartOfVBlank() { return videoLine == 240; }
@@ -105,5 +105,5 @@ private:
     uint16_t videoLine        = 0;   // $EC   : Current line number
     uint8_t  videoIrqLine     = 0;   // $ED   : Line number at which to generate IRQ
 
-    uint16_t screen[VIDEO_WIDTH * VIDEO_HEIGHT];
+    uint16_t screen[activeWidth * activeHeight];
 };

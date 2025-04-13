@@ -72,7 +72,7 @@ uint8_t AqpVideo::readReg(uint8_t r) {
 }
 
 void AqpVideo::drawLine(int line) {
-    if (line < 0 || line >= VIDEO_HEIGHT)
+    if (line < 0 || line >= activeHeight)
         return;
 
     bool vActive = line >= 16 && line < 216;
@@ -85,7 +85,7 @@ void AqpVideo::drawLine(int line) {
         bool remapBorder = (videoCtrl & VCTRL_REMAP_BORDER_CHAR) != 0;
 
         unsigned idx = 1024 - 32;
-        for (int i = 0; i < VIDEO_WIDTH; i++) {
+        for (int i = 0; i < activeWidth; i++) {
             // Draw text character
             unsigned addr = 0;
 
@@ -289,10 +289,10 @@ void AqpVideo::drawLine(int line) {
 
     // Compose layers
     {
-        uint16_t *pd  = &screen[line * VIDEO_WIDTH];
+        uint16_t *pd  = &screen[line * activeWidth];
         unsigned  idx = 1024 - 32;
 
-        for (int i = 0; i < VIDEO_WIDTH; i++) {
+        for (int i = 0; i < activeWidth; i++) {
             bool active       = idx < 640 && vActive;
             bool textPriority = (videoCtrl & VCTRL_TEXT_PRIORITY) != 0;
             bool textEnable   = (videoCtrl & VCTRL_TEXT_ENABLE) != 0;

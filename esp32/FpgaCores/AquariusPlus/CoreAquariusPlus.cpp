@@ -528,7 +528,18 @@ public:
 
     void mouseReport(int dx, int dy, uint8_t buttonMask, int dWheel, bool absPos) override {
         RecursiveMutexLock lock(mutex);
-        // printf("mouse %d %d %d %d\n", dx, dy, buttonMask, dWheel);
+
+        if (absPos) {
+            if (dx < 0 || dy < 0)
+                return;
+
+            dy -= 32;
+            if (!videoTimingMode)
+                dx -= 32;
+
+            dy /= 2;
+            dx /= 2;
+        }
 
         float sensitivity = 1.0f / (float)mouseSensitivityDiv;
         mouseX            = std::max(0.0f, std::min(319.0f, absPos ? dx : (mouseX + (float)(dx * sensitivity))));

@@ -41,7 +41,6 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
 )
 
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
-    AssemblyListing.cpp
     Audio.cpp
     Config.cpp
     EmuState.cpp
@@ -49,12 +48,13 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     MemoryEditor.cpp
     UI.cpp
     Version.cpp
-    
+
     lib/Common.cpp
-    
+
     fpga_cores/aqplus/AqpEmuState.cpp
     fpga_cores/aqplus/AqpVideo.cpp
     fpga_cores/aqplus/AY8910.cpp
+    fpga_cores/aqplus/AssemblyListing.cpp
 
     esp32/main.cpp
     esp32/FPGA.cpp

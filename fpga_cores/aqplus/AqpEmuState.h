@@ -21,6 +21,7 @@ public:
 
     void reset(bool cold) override;
     bool emulate(int16_t *audioBuf, unsigned numSamples) override;
+    void getVideoSize(int &w, int &h) override;
     void getPixels(void *pixels, int pitch) override;
     void spiSel(bool enable) override;
     void spiTx(const void *data, size_t length) override;
@@ -64,6 +65,7 @@ private:
     int      sampleHalfCycles  = 0;   // Half-cycles for this sample
     uint8_t  keybMatrix[8]     = {0}; // Keyboard matrix (8 x 6bits)
     bool     cartridgeInserted = false;
+    uint8_t  videoMode         = 0;
 
     unsigned audioLeft  = 0;
     unsigned audioRight = 0;

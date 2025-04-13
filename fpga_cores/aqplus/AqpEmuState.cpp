@@ -486,23 +486,34 @@ static uint32_t col12_to_col32(uint16_t col444) {
     return (0xFF << 24) | (b8 << 16) | (g8 << 8) | (r8);
 }
 
+void AqpEmuState::getVideoSize(int &w, int &h) {
+    w = videoMode ? 640 : AqpVideo::activeWidth;
+    h = AqpVideo::activeHeight * 2;
+}
+
 void AqpEmuState::getPixels(void *pixels, int pitch) {
     const uint16_t *fb = video.getFb();
 
-    for (int j = 0; j < VIDEO_HEIGHT * 2; j++) {
-        for (int i = 0; i < VIDEO_WIDTH; i++) {
+    auto activeWidth  = AqpVideo::activeWidth;
+    auto activeHeight = AqpVideo::activeHeight;
+    int  w            = videoMode ? 640 : AqpVideo::activeWidth;
+
+    for (int j = 0; j < activeHeight * 2; j++) {
+        for (int i = 0; i < w; i++) {
+            int x = videoMode ? (i + 32) : i;
+
             // Convert from RGB444 to ABGR888
-            uint32_t col = col12_to_col32(fb[j / 2 * VIDEO_WIDTH + i]);
+            uint32_t col = col12_to_col32(fb[j / 2 * activeWidth + x]);
 
             // Render overlay text
             {
                 int line = j / 2;
                 if (line >= 16 && line < 216) {
-                    int idx = i - 32;
+                    int idx = x - 32;
                     if (idx >= 0 && idx < 640) {
                         // Draw text character
                         int      row    = (line - 16) / 8;
-                        int      column = ((i / 2) - 16) / 8;
+                        int      column = ((x / 2) - 16) / 8;
                         unsigned addr   = (row * 40 + column) & 0x3FF;
 
                         uint16_t chCol = ovlText[addr];
@@ -510,7 +521,7 @@ void AqpEmuState::getPixels(void *pixels, int pitch) {
                         uint8_t ch     = chCol & 0xFF;
                         uint8_t color  = chCol >> 8;
                         uint8_t charBm = ovlFont[ch * 8 + (line & 7)];
-                        uint8_t colIdx = (charBm & (1 << (7 - ((i / 2) & 7)))) ? (color >> 4) : (color & 0xF);
+                        uint8_t colIdx = (charBm & (1 << (7 - ((x / 2) & 7)))) ? (color >> 4) : (color & 0xF);
 
                         uint16_t col4444 = ovlPalette[colIdx];
                         if ((col4444 >> 12) >= 8)
@@ -717,6 +728,13 @@ void AqpEmuState::spiSel(bool enable) {
                 if (txBuf.size() >= 1 + 2) {
                     ay1.portRdData[0] = txBuf[1];
                     ay1.portRdData[1] = txBuf[2];
+                }
+                break;
+            }
+
+            case CMD_SET_VIDMODE: {
+                if (txBuf.size() >= 1 + 1) {
+                    videoMode = txBuf[1];
                 }
                 break;
             }

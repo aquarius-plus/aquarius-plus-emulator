@@ -32,8 +32,8 @@ void Config::load() {
 
         wndPosX        = getIntValue(root, "wndPosX", SDL_WINDOWPOS_CENTERED);
         wndPosY        = getIntValue(root, "wndPosY", SDL_WINDOWPOS_CENTERED);
-        wndWidth       = getIntValue(root, "wndWidth", VIDEO_WIDTH);
-        wndHeight      = getIntValue(root, "wndHeight", VIDEO_HEIGHT * 2);
+        wndWidth       = getIntValue(root, "wndWidth", 800);
+        wndHeight      = getIntValue(root, "wndHeight", 600);
         enableSound    = getBoolValue(root, "enableSound", true);
         enableMouse    = getBoolValue(root, "enableMouse", true);
         fontScale2x    = getBoolValue(root, "fontScale2x", false);
@@ -80,8 +80,8 @@ void Config::load() {
     // Sanitize some variables
     wndPosX   = std::max(wndPosX, 0);
     wndPosY   = std::max(wndPosY, 0);
-    wndWidth  = std::max(wndWidth, VIDEO_WIDTH);
-    wndHeight = std::max(wndHeight, VIDEO_HEIGHT);
+    wndWidth  = std::max(wndWidth, 800);
+    wndHeight = std::max(wndHeight, 600);
 }
 
 void Config::save() {
