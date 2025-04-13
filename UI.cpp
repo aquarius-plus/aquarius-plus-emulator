@@ -263,8 +263,12 @@ public:
                     if (!emuState->pasteIsDone())
                         emuSpeed = 16;
 
+                    bool enableSound = config->enableSound;
+                    if (emuSpeed != 1)
+                        enableSound = false;
+
                     for (int i = 0; i < emuSpeed; i++)
-                        updateScreen |= emuState->emulate(emuSpeed == 1 ? abuf : nullptr, SAMPLES_PER_BUFFER);
+                        updateScreen |= emuState->emulate(enableSound ? abuf : nullptr, SAMPLES_PER_BUFFER);
 
                     Audio::instance()->putBuffer(abuf);
                 }
