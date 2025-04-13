@@ -63,7 +63,6 @@ void Config::load() {
                         continue;
 
                     uint8_t val = item->valueint;
-                    printf("%s: %u\n", item->string, val);
                     nvs_u8.insert_or_assign(item->string, val);
                 }
             }

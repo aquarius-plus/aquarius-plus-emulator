@@ -21,8 +21,6 @@ esp_err_t nvs_commit(nvs_handle_t c_handle) {
 }
 
 esp_err_t nvs_get_u8(nvs_handle_t c_handle, const char *key, uint8_t *out_value) {
-    printf("nvs_get_u8 %s\n", key);
-
     auto config = Config::instance();
     auto it     = config->nvs_u8.find(key);
     if (it == config->nvs_u8.end())
