@@ -36,3 +36,5 @@ public:
     virtual void dbgMenu()                   = 0;
     virtual void dbgWindows()                = 0;
 };
+
+std::shared_ptr<EmuState> newAqpEmuState();

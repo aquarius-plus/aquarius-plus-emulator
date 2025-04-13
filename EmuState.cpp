@@ -4,7 +4,6 @@
 #include "Keyboard.h"
 #include "fpgarom.h"
 #include "FpgaCore.h"
-#include "AqpEmuState.h"
 
 static std::shared_ptr<EmuState> curEmuState;
 
@@ -12,12 +11,28 @@ std::shared_ptr<EmuState> EmuState::get() {
     return curEmuState;
 }
 
-void EmuState::loadCore(const std::string &name) {
-    printf("loadCore %s\n", name.c_str());
-
+void EmuState::loadCore(const std::string &_name) {
     curEmuState = nullptr;
+
+    std::string name;
+
+    // Normalize passed name
+    {
+        std::vector<std::string> result;
+        splitPath(_name, result);
+        if (result.empty())
+            return;
+
+        name = result.back();
+        for (auto &ch : name) {
+            ch = tolower(ch);
+        }
+    }
+
+    printf("loadCore %s\n", name.c_str());
     if (name == "aqplus.core") {
-        curEmuState = std::make_shared<AqpEmuState>();
+        curEmuState = newAqpEmuState();
+    } else if (name == "aqms.core") {
     }
 }
 
