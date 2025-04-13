@@ -6,9 +6,19 @@
 #include "FpgaCore.h"
 #include "AqpEmuState.h"
 
-AqpEmuState aqpEmuState;
-EmuState   *EmuState::get() {
-    return &aqpEmuState;
+static std::shared_ptr<EmuState> curEmuState;
+
+std::shared_ptr<EmuState> EmuState::get() {
+    return curEmuState;
+}
+
+void EmuState::loadCore(const std::string &name) {
+    printf("loadCore %s\n", name.c_str());
+
+    curEmuState = nullptr;
+    if (name == "aqplus.core") {
+        curEmuState = std::make_shared<AqpEmuState>();
+    }
 }
 
 void esp_restart() {

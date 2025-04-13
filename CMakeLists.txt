@@ -86,6 +86,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     external/tinyfiledialogs/tinyfiledialogs.cpp
 )
 
+target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE EMULATOR)
+
 if (LINUX)
     find_package(PkgConfig)
     target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic -Wno-psabi -Wno-unused-parameter)

@@ -91,8 +91,9 @@ public:
         FPGA::instance()->init();
         FreeRtosMock_init();
         app_main();
-        EmuState::get()->init();
-        EmuState::get()->pasteText(typeInStr);
+        auto emuState = EmuState::get();
+        if (emuState)
+            emuState->pasteText(typeInStr);
         mainLoop();
         FreeRtosMock_deinit();
 
@@ -115,7 +116,9 @@ public:
         }
         // We decode CTRL-ESCAPE in this weird way to allow the sequence ESCAPE and then CTRL to be used on Windows.
         if (escapePressed && keyDown && (mod & KMOD_LCTRL)) {
-            EmuState::get()->reset(false);
+            auto emuState = EmuState::get();
+            if (emuState)
+                emuState->reset(false);
             return;
         }
 
@@ -132,7 +135,6 @@ public:
         ImGuiIO &io         = ImGui::GetIO();
         auto    &platformIO = ImGui::GetPlatformIO();
         auto     config     = Config::instance();
-        auto     emuState   = EmuState::get();
 
         bool showAppAbout   = false;
         bool showDemoWindow = false;
@@ -143,6 +145,8 @@ public:
 
         bool done = false;
         while (!done) {
+            auto emuState = EmuState::get();
+
             SDL_Event event;
             while (SDL_PollEvent(&event)) {
                 ImGui_ImplSDL2_ProcessEvent(&event);
@@ -250,19 +254,21 @@ public:
                     assert(abuf != nullptr);
                     memset(abuf, 0, SAMPLES_PER_BUFFER * 2 * 2);
 
-                    emuState->setDebuggerEnabled(config->enableDebugger);
+                    if (emuState) {
+                        emuState->setDebuggerEnabled(config->enableDebugger);
 
-                    // Increase emulation speed while pasting text
-                    int emuSpeed = config->enableDebugger ? emulationSpeed : 1;
-                    if (!emuState->pasteIsDone())
-                        emuSpeed = 16;
+                        // Increase emulation speed while pasting text
+                        int emuSpeed = config->enableDebugger ? emulationSpeed : 1;
+                        if (!emuState->pasteIsDone())
+                            emuSpeed = 16;
 
-                    bool enableSound = config->enableSound;
-                    if (emuSpeed != 1)
-                        enableSound = false;
+                        bool enableSound = config->enableSound;
+                        if (emuSpeed != 1)
+                            enableSound = false;
 
-                    for (int i = 0; i < emuSpeed; i++)
-                        updateScreen |= emuState->emulate(enableSound ? abuf : nullptr, SAMPLES_PER_BUFFER);
+                        for (int i = 0; i < emuSpeed; i++)
+                            updateScreen |= emuState->emulate(enableSound ? abuf : nullptr, SAMPLES_PER_BUFFER);
+                    }
 
                     Audio::instance()->putBuffer(abuf);
                 }
@@ -321,7 +327,8 @@ public:
                         setSDCardPath("");
                     }
                     ImGui::Separator();
-                    emuState->fileMenu();
+                    if (emuState)
+                        emuState->fileMenu();
                     ImGui::MenuItem("Enable sound", "", &config->enableSound);
                     ImGui::MenuItem("Enable mouse", "", &config->enableMouse);
                     ImGui::Separator();
@@ -343,7 +350,7 @@ public:
                     if (ImGui::MenuItem("Save screenshot...", "")) {
                         char const *lFilterPatterns[1] = {"*.png"};
                         char       *path               = tinyfd_saveFileDialog("Save screenshot", "", 1, lFilterPatterns, "PNG files");
-                        if (path) {
+                        if (path && emuState) {
                             std::string pngFile = path;
                             if (pngFile.size() < 4 || pngFile.substr(pngFile.size() - 4) != ".png")
                                 pngFile += ".png";
@@ -378,7 +385,7 @@ public:
                     ImGui::EndMenu();
                 }
                 if (ImGui::BeginMenu("Keyboard")) {
-                    if (ImGui::MenuItem("Paste text from clipboard", "")) {
+                    if (ImGui::MenuItem("Paste text from clipboard", "") && emuState) {
                         emuState->pasteText(platformIO.Platform_GetClipboardTextFn(ImGui::GetCurrentContext()));
                     }
                     ImGui::Separator();
@@ -394,8 +401,10 @@ public:
                     ImGui::MenuItem("Enable debugger", "", &config->enableDebugger);
                     if (config->enableDebugger) {
                         ImGui::Separator();
-                        emuState->dbgMenu();
-                        ImGui::Separator();
+                        if (emuState) {
+                            emuState->dbgMenu();
+                            ImGui::Separator();
+                        }
                         ImGui::MenuItem("ESP info", "", &config->showEspInfo);
                         ImGui::Separator();
                         ImGui::Text("Emulation speed");
@@ -423,7 +432,8 @@ public:
                 allowTyping = true;
             }
 
-            emuState->dbgWindows();
+            if (emuState)
+                emuState->dbgWindows();
             if (config->enableDebugger && config->showEspInfo)
                 wndEspInfo(&config->showEspInfo);
 

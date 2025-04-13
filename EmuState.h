@@ -12,9 +12,8 @@
 
 class EmuState {
 public:
-    static EmuState *get();
-
-    virtual void init() = 0;
+    static std::shared_ptr<EmuState> get();
+    static void                      loadCore(const std::string &name);
 
     virtual void loadConfig(cJSON *root) = 0;
     virtual void saveConfig(cJSON *root) = 0;

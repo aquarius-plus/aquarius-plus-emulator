@@ -34,9 +34,6 @@ AqpEmuState::AqpEmuState() {
     reset(true);
 }
 
-void AqpEmuState::init() {
-}
-
 void AqpEmuState::loadConfig(cJSON *root) {
     auto cfgBreakpoints = cJSON_GetObjectItem(root, "breakpoints");
     if (cJSON_IsArray(cfgBreakpoints)) {

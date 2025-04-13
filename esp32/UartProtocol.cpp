@@ -861,7 +861,11 @@ public:
 
             printf("Loading bitstream: %s (%u bytes)\n", pathArg, (unsigned)st.st_size);
 
+#ifdef EMULATOR
+            auto newCore = loadFpgaCore(FpgaCoreType::AquariusPlus, path.c_str(), st.st_size);
+#else
             auto newCore = loadFpgaCore(FpgaCoreType::AquariusPlus, buf, st.st_size);
+#endif
             if (!newCore) {
                 printf("Failed! Loading default bitstream\n");
 

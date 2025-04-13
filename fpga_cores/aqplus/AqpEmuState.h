@@ -14,8 +14,6 @@ class AqpEmuState : public EmuState {
 public:
     AqpEmuState();
 
-    void init() override;
-
     void loadConfig(cJSON *root) override;
     void saveConfig(cJSON *root) override;
 

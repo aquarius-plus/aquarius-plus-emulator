@@ -8,7 +8,7 @@ enum {
 
 class FPGAInt : public FPGA {
 public:
-    SemaphoreHandle_t   mutex;
+    SemaphoreHandle_t mutex;
 
     FPGAInt() {
     }
@@ -22,27 +22,32 @@ public:
         RecursiveMutexLock lock(mutex);
         ESP_LOGI(TAG, "Starting configuration");
 
-        return true;
+#ifdef EMULATOR
+        EmuState::loadCore((const char *)data);
+        if (EmuState::get())
+            return true;
+#endif
+        return false;
     }
 
     void spiSel(bool enable) override {
-        auto es = EmuState::get();
-        if (es) {
-            es->spiSel(enable);
+        auto emuState = EmuState::get();
+        if (emuState) {
+            emuState->spiSel(enable);
         }
     }
 
     void spiTx(const void *data, size_t length) override {
-        auto es = EmuState::get();
-        if (es) {
-            es->spiTx(data, length);
+        auto emuState = EmuState::get();
+        if (emuState) {
+            emuState->spiTx(data, length);
         }
     }
 
     void spiRx(void *buf, size_t length) override {
-        auto es = EmuState::get();
-        if (es) {
-            es->spiRx(buf, length);
+        auto emuState = EmuState::get();
+        if (emuState) {
+            emuState->spiRx(buf, length);
         }
     }
 

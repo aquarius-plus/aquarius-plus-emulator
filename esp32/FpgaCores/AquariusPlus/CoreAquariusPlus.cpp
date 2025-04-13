@@ -117,7 +117,31 @@ public:
     }
 
     bool loadBitstream(const void *data, size_t length) override {
-        bool result = true;
+        bool result = false;
+#ifdef EMULATOR
+        if (data == nullptr) {
+            data = "aqplus.core";
+        }
+#endif
+        if (data == nullptr) {
+#ifndef EMULATOR
+#ifdef CONFIG_MACHINE_TYPE_AQPLUS
+            extern const uint8_t fpgaImageXzhStart[] asm("_binary_aqp_top_bit_xzh_start");
+            extern const uint8_t fpgaImageXzhEnd[] asm("_binary_aqp_top_bit_xzh_end");
+            auto                 fpgaImage = xzhDecompress(fpgaImageXzhStart, fpgaImageXzhEnd - fpgaImageXzhStart);
+            result                         = FPGA::instance()->loadBitstream(fpgaImage.data(), fpgaImage.size());
+#else
+            extern const uint8_t fpgaImageStart[] asm("_binary_morphbook_aqplus_impl1_bit_start");
+            extern const uint8_t fpgaImageEnd[] asm("_binary_morphbook_aqplus_impl1_bit_end");
+            data   = fpgaImageStart;
+            length = fpgaImageEnd - fpgaImageStart;
+            result = FPGA::instance()->loadBitstream(data, length);
+#endif
+#endif
+        } else {
+            result = FPGA::instance()->loadBitstream(data, length);
+        }
+
         memset(&coreInfo, 0, sizeof(coreInfo));
         if (result) {
             FPGA::instance()->getCoreInfo(&coreInfo);
