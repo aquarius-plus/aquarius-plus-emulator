@@ -87,4 +87,6 @@ VFS *getEspVFS();
 VFS *getHttpVFS();
 VFS *getTcpVFS();
 
+#ifdef EMULATOR
 void setSDCardPath(const std::string &basePath);
+#endif

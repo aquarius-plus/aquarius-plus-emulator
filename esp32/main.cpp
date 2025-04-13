@@ -1,6 +1,4 @@
 #include "Common.h"
-// #include "WiFi.h"
-// #include "Bluetooth.h"
 #include "USBHost.h"
 #include "FPGA.h"
 #include "Keyboard.h"
@@ -8,10 +6,14 @@
 #include "DisplayOverlay/DisplayOverlay.h"
 #include <nvs_flash.h>
 #include "VFS.h"
-// #include "FileServer.h"
 #include "FpgaCore.h"
-// #include "PowerLED.h"
-// #include <esp_heap_caps.h>
+#ifndef EMULATOR
+#include "WiFi.h"
+#include "Bluetooth.h"
+#include "FileServer.h"
+#include "PowerLED.h"
+#include <esp_heap_caps.h>
+#endif
 
 static const char *TAG = "main";
 
@@ -20,11 +22,13 @@ extern "C" void app_main(void);
 void app_main(void) {
     ESP_LOGI(TAG, "Aquarius+ ESP32 firmware");
 
+#ifndef EMULATOR
     // Init power LED
-    // getPowerLED()->init();
+    getPowerLED()->init();
 
     // Initialize the event loop
-    // ESP_ERROR_CHECK(esp_event_loop_create_default());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+#endif
 
     // Initialize NVS
     esp_err_t ret = nvs_flash_init();
@@ -40,11 +44,13 @@ void app_main(void) {
     {
         nvs_handle_t h;
         if (nvs_open("settings", NVS_READONLY, &h) == ESP_OK) {
-            // char   tz[128];
-            // size_t len = sizeof(tz);
-            // if (nvs_get_str(h, "tz", tz, &len) == ESP_OK) {
-            //     setenv("TZ", tz, 1);
-            // }
+#ifndef EMULATOR
+            char   tz[128];
+            size_t len = sizeof(tz);
+            if (nvs_get_str(h, "tz", tz, &len) == ESP_OK) {
+                setenv("TZ", tz, 1);
+            }
+#endif
 
             uint8_t kblayout = 0;
             if (nvs_get_u8(h, "kblayout", &kblayout) == ESP_OK) {
@@ -56,10 +62,13 @@ void app_main(void) {
 
     getSDCardVFS()->init();
     getUSBHost()->init();
-    // getWiFi()->init();
-    // getBluetooth()->init();
+#ifndef EMULATOR
+    getWiFi()->init();
+    getBluetooth()->init();
+#endif
     UartProtocol::instance()->init();
 
+#ifndef EMULATOR
     {
         bool         fileServerOn = false;
         nvs_handle_t h;
@@ -70,9 +79,10 @@ void app_main(void) {
             }
             nvs_close(h);
         }
-        // if (fileServerOn)
-        //     getFileServer()->start();
+        if (fileServerOn)
+            getFileServer()->start();
     }
+#endif
 
     FPGA::instance()->init();
     loadFpgaCore(FpgaCoreType::AquariusPlus);
