@@ -11,6 +11,7 @@
 #include "tinyfiledialogs.h"
 #include "DisplayOverlay/DisplayOverlay.h"
 #include "AssemblyListing.h"
+#include <queue>
 
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include "MemoryEditor.h"
@@ -36,6 +37,8 @@ static uint32_t col12_to_col32(uint16_t col444) {
 
     return (0xFF << 24) | (b8 << 16) | (g8 << 8) | (r8);
 }
+
+static const char coreName[17] = "Aquarius+       ";
 
 class AqpEmuState : public EmuState {
 public:
@@ -63,6 +66,7 @@ public:
     DCBlock  dcBlockRight;
 
     std::vector<uint8_t> txBuf;
+    std::queue<uint8_t>  rxQueue;
     bool                 enabled = false;
 
     // Virtual typing from command-line argument
@@ -393,16 +397,58 @@ public:
         txBuf.clear();
     }
 
+    void rxQueuePushData(const void *_p, size_t size) {
+        auto p = static_cast<const uint8_t *>(_p);
+        while (size--) {
+            rxQueue.push(*(p++));
+        }
+    }
+
     void spiTx(const void *data, size_t length) override {
         if (!enabled)
             return;
         auto p = static_cast<const uint8_t *>(data);
         txBuf.insert(txBuf.end(), p, p + length);
+
+        if (!txBuf.empty())
+            switch (txBuf[0]) {
+                case CMD_GET_SYSINFO: {
+                    if (txBuf.size() == 2) {
+                        rxQueue.push(1);
+                        rxQueue.push(0x1E);
+                        rxQueue.push(1);
+                        rxQueue.push(0);
+                    }
+                    break;
+                }
+                case CMD_GET_NAME1: {
+                    if (txBuf.size() == 2) {
+                        rxQueuePushData(coreName, 8);
+                    }
+                    break;
+                }
+                case CMD_GET_NAME2: {
+                    if (txBuf.size() == 2) {
+                        rxQueuePushData(coreName + 8, 8);
+                    }
+                    break;
+                }
+            }
     }
 
     void spiRx(void *buf, size_t length) override {
         if (!enabled)
             return;
+
+        uint8_t *p = static_cast<uint8_t *>(buf);
+        for (unsigned i = 0; i < length; i++) {
+            uint8_t val = 0;
+            if (!rxQueue.empty()) {
+                val = rxQueue.front();
+                rxQueue.pop();
+            }
+            *(p++) = val;
+        }
     }
 
     void pasteText(const std::string &str) override { typeInStr = str; }

@@ -1,18 +1,9 @@
 #pragma once
 
 #include <stdint.h>
+#include "esp_err.h"
 
 typedef uint32_t nvs_handle_t;
-typedef int      esp_err_t;
-
-#define ESP_OK   0
-#define ESP_FAIL (-1)
-
-#define ESP_ERROR_CHECK(x) (x)
-
-#define ESP_ERR_NVS_BASE              0x1100                    /*!< Starting number of error codes */
-#define ESP_ERR_NVS_NO_FREE_PAGES     (ESP_ERR_NVS_BASE + 0x0d) /*!< NVS partition doesn't contain any empty pages. This may happen if NVS partition was truncated. Erase the whole partition and call nvs_flash_init again. */
-#define ESP_ERR_NVS_NEW_VERSION_FOUND (ESP_ERR_NVS_BASE + 0x10) /*!< NVS partition contains data in new format and cannot be recognized by this version of code */
 
 typedef enum {
     NVS_READONLY,

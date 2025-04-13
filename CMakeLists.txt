@@ -71,6 +71,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     esp32/DisplayOverlay/Menus.cpp
     esp32/mocks/FreeRtosMock.cpp
     esp32/mocks/nvs_flash.cpp
+    esp32/mocks/esp_ota_ops.cpp
     esp32/USB/USBHost.cpp
 
     external/cjson/cJSON.c

@@ -42,6 +42,7 @@ public:
     virtual void txWrite(uint8_t data)                   = 0;
     virtual void txWrite(const void *buf, size_t length) = 0;
 
+#ifdef EMULATOR
     // Emulator interface
     virtual void    writeCtrl(uint8_t data) = 0;
     virtual void    writeData(uint8_t data) = 0;
@@ -62,4 +63,5 @@ public:
         unsigned    offset;
     };
     std::map<uint8_t, DirInfo> di;
+#endif
 };

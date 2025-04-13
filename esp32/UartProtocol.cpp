@@ -1,15 +1,23 @@
 #include "UartProtocol.h"
 
 #include <algorithm>
-#include <time.h>
-#include <math.h>
+#include <esp_ota_ops.h>
+#ifndef EMULATOR
+#include <driver/uart.h>
+#else
 #include "EmuState.h"
-#include "Config.h"
-#include "GameCtrl.h"
+#endif
 
 #include "VFS.h"
 #include "Keyboard.h"
 #include "FpgaCore.h"
+
+#ifndef EMULATOR
+static const char *TAG = "UartProtocol";
+
+#define UART_NUM (UART_NUM_1)
+#define BUF_SIZE (1024)
+#endif
 
 #define MAX_FDS (10)
 #define MAX_DDS (10)
@@ -17,11 +25,16 @@
 #define ESP_PREFIX "esp:"
 
 #if 0
+#ifndef EMULATOR
+#define DBGF(...) ESP_LOGI(TAG, __VA_ARGS__)
+#else
 #define DBGF(...) printf(__VA_ARGS__)
+#endif
 #else
 #define DBGF(...)
 #endif
 
+#ifdef EMULATOR
 #ifndef _WIN32
 static inline std::string toUpper(std::string s) {
     for (auto &ch : s)
@@ -29,16 +42,24 @@ static inline std::string toUpper(std::string s) {
     return s;
 }
 #endif
+#endif
 
 class UartProtocolInt : public UartProtocol {
 public:
+#ifndef EMULATOR
+    QueueHandle_t uartQueue;
+    bool          rxEscape = false;
+    uint8_t       txBuf[256];
+    int           txBufIdx = 0;
+#else
+    uint8_t  txBuf[16 + 0x10000];
+    unsigned txBufWrIdx = 0;
+    unsigned txBufRdIdx = 0;
+    unsigned txBufCnt   = 0;
+#endif
     std::string currentPath;
     uint8_t     rxBuf[16 + 0x10000];
     int         rxBufIdx = -1;
-    uint8_t     txBuf[16 + 0x10000];
-    unsigned    txBufWrIdx = 0;
-    unsigned    txBufRdIdx = 0;
-    unsigned    txBufCnt   = 0;
     VFS        *fdVfs[MAX_FDS];
     uint8_t     fds[MAX_FDS];
     DirEnumCtx  deCtxs[MAX_DDS];
@@ -57,26 +78,55 @@ public:
     }
 
     void init() override {
+#ifndef EMULATOR
+        // Initialize UART to FPGA
+        uart_config_t uart_config = {
+            .baud_rate           = CONFIG_UARTPROTOCOL_BAUDRATE,
+            .data_bits           = UART_DATA_8_BITS,
+            .parity              = UART_PARITY_DISABLE,
+            .stop_bits           = UART_STOP_BITS_1,
+            .flow_ctrl           = UART_HW_FLOWCTRL_CTS_RTS,
+            .rx_flow_ctrl_thresh = 122,
+            .source_clk          = UART_SCLK_DEFAULT,
+        };
+        ESP_ERROR_CHECK(uart_param_config(UART_NUM, &uart_config));
+        ESP_ERROR_CHECK(uart_set_pin(UART_NUM, IOPIN_UART_TX, IOPIN_UART_RX, IOPIN_UART_RTS, IOPIN_UART_CTS));
+
+        // Setup UART buffered IO with event queue
+        ESP_ERROR_CHECK(uart_driver_install(UART_NUM, BUF_SIZE * 2, BUF_SIZE * 2, 256, &uartQueue, 0));
+
+        uint32_t baudrate;
+        ESP_ERROR_CHECK(uart_get_baudrate(UART_NUM, &baudrate));
+        ESP_LOGI(TAG, "Actual baudrate: %lu", baudrate);
+#endif
+
         getEspVFS()->init();
         getHttpVFS()->init();
         getTcpVFS()->init();
+
+#ifndef EMULATOR
+        if (xTaskCreate(_uartEventTask, "uartEvent", 6144, this, 1, nullptr) != pdPASS) {
+            ESP_LOGE(TAG, "Error creating uartEvent task");
+        }
+#endif
     }
 
+#ifdef EMULATOR
     std::string getCurrentPath() override {
         return currentPath;
     }
 
-    void writeData(uint8_t data) {
+    void writeData(uint8_t data) override {
         receivedByte(data);
     }
 
-    void writeCtrl(uint8_t data) {
+    void writeCtrl(uint8_t data) override {
         if (data & 0x80) {
             rxBufIdx = 0;
         }
     }
 
-    uint8_t readData() {
+    uint8_t readData() override {
         int data = txFifoRead();
         if (data < 0) {
             printf("esp32_read_data - Empty!\n");
@@ -85,7 +135,7 @@ public:
         return data;
     }
 
-    uint8_t readCtrl() {
+    uint8_t readCtrl() override {
         uint8_t result = 0;
         if (txBufCnt > 0) {
             result |= 1;
@@ -104,20 +154,105 @@ public:
         }
         return result;
     }
+#endif
 
-    void txBufFlush() {
-        // if (txBufIdx > 0) {
-        //     // ESP_LOG_BUFFER_HEXDUMP(TAG, txBuf, txBufIdx, ESP_LOG_INFO);
-        //     uart_write_bytes(UART_NUM, txBuf, txBufIdx);
-        // }
-        // txBufIdx = 0;
+#ifndef EMULATOR
+    static void _uartEventTask(void *param) { static_cast<UartProtocolInt *>(param)->uartEventTask(); }
+
+    void uartEventTask() {
+        uart_event_t                  event;
+        std::array<uint8_t, BUF_SIZE> buf;
+
+        while (1) {
+            // Waiting for UART event.
+            if (xQueueReceive(uartQueue, (void *)&event, (TickType_t)portMAX_DELAY)) {
+                buf.fill(0);
+                switch (event.type) {
+                    // UART data available
+                    case UART_DATA: {
+                        int len = uart_read_bytes(UART_NUM, buf.data(), event.size, portMAX_DELAY);
+                        assert(len >= 0);
+                        for (unsigned i = 0; i < len; i++) {
+                            auto val = buf[i];
+                            if (val == 0x7E) {
+                                // Start of frame
+                                rxBufIdx = 0;
+                                rxEscape = false;
+                                continue;
+                            }
+                            if (rxBufIdx < 0)
+                                continue;
+                            if (val == 0x7D) {
+                                rxEscape = true;
+                                continue;
+                            }
+                            if (rxEscape) {
+                                val ^= 0x20;
+                                rxEscape = false;
+                            }
+                            receivedByte(val);
+                        }
+                        break;
+                    }
+
+                    // HW FIFO overflow detected
+                    case UART_FIFO_OVF:
+                        ESP_LOGW(TAG, "HW FIFO overflow");
+                        uart_flush_input(UART_NUM);
+                        xQueueReset(uartQueue);
+                        break;
+
+                    // UART ring buffer full
+                    case UART_BUFFER_FULL:
+                        ESP_LOGW(TAG, "ring buffer full");
+                        uart_flush_input(UART_NUM);
+                        xQueueReset(uartQueue);
+                        break;
+
+                    // UART RX break detected
+                    case UART_BREAK:
+                        ESP_LOGW(TAG, "rx break detected");
+                        break;
+
+                    case UART_PARITY_ERR: ESP_LOGW(TAG, "UART parity error"); break;
+                    case UART_FRAME_ERR: ESP_LOGW(TAG, "UART frame error"); break;
+                    default: ESP_LOGW(TAG, "UART event type: %d", event.type); break;
+                }
+            }
+        }
     }
-
-    void txStart() {
+#endif
+    void txBufFlush() {
+#ifndef EMULATOR
+        if (txBufIdx > 0) {
+            // ESP_LOG_BUFFER_HEXDUMP(TAG, txBuf, txBufIdx, ESP_LOG_INFO);
+            uart_write_bytes(UART_NUM, txBuf, txBufIdx);
+        }
+        txBufIdx = 0;
+#endif
+    }
+#ifndef EMULATOR
+    void txBufPush(uint8_t val) {
+        txBuf[txBufIdx++] = val;
+        if (txBufIdx >= sizeof(txBuf))
+            txBufFlush();
+    }
+#endif
+    void txStart() override {
+#ifndef EMULATOR
         // Aq+ can't handle this for now:
         // txBufPush(0x7E);
+#endif
     }
     void txWrite(uint8_t data) override {
+#ifndef EMULATOR
+        if (data == 0x7D || data == 0x7E) {
+            txBufPush(0x7D);
+            txBufPush(data ^ 0x20);
+        } else {
+            txBufPush(data);
+        }
+#else
         if (txBufCnt >= sizeof(txBuf))
             return;
 
@@ -126,6 +261,7 @@ public:
         if (txBufWrIdx >= sizeof(txBuf)) {
             txBufWrIdx = 0;
         }
+#endif
     }
     void txWrite(const void *buf, size_t length) override {
         auto p = static_cast<const uint8_t *>(buf);
@@ -380,8 +516,12 @@ public:
     void cmdVersion() {
         DBGF("VERSION()");
 
-        extern const char *versionStr;
-        const char        *p = versionStr;
+        const char            *p       = "Unknown";
+        const esp_partition_t *running = esp_ota_get_running_partition();
+        esp_app_desc_t         running_app_info;
+        if (esp_ota_get_partition_description(running, &running_app_info) == ESP_OK) {
+            p = running_app_info.version;
+        }
 
         txStart();
         txWrite(p, strlen(p) + 1);
@@ -464,11 +604,13 @@ public:
             fds[fd]   = vfs_fd;
             txWrite(fd);
 
+#ifdef EMULATOR
             FileInfo tmp;
             tmp.flags  = flags;
             tmp.name   = pathArg;
             tmp.offset = 0;
             fi.insert(std::make_pair(fd, tmp));
+#endif
         }
     }
     void cmdClose(uint8_t fd) {
@@ -483,10 +625,12 @@ public:
         txWrite(fdVfs[fd]->close(fds[fd]));
         fdVfs[fd] = nullptr;
 
+#ifdef EMULATOR
         auto it = fi.find(fd);
         if (it != fi.end()) {
             fi.erase(it);
         }
+#endif
     }
     void cmdRead(uint8_t fd, uint16_t size) {
         DBGF("READ(fd=%u, size=%u)", fd, size);
@@ -506,7 +650,9 @@ public:
             txWrite((result >> 8) & 0xFF);
             txWrite(rxBuf, result);
 
+#ifdef EMULATOR
             fi[fd].offset += result;
+#endif
         }
     }
     void cmdReadLine(uint8_t fd, uint16_t size) {
@@ -532,7 +678,9 @@ public:
             }
             txWrite(0);
 
+#ifdef EMULATOR
             fi[fd].offset = fdVfs[fd]->tell(fds[fd]);
+#endif
         }
     }
     void cmdWrite(uint8_t fd, uint16_t size, const void *data) {
@@ -552,7 +700,9 @@ public:
             txWrite((result >> 0) & 0xFF);
             txWrite((result >> 8) & 0xFF);
 
+#ifdef EMULATOR
             fi[fd].offset += result;
+#endif
         }
     }
     void cmdSeek(uint8_t fd, uint32_t offset) {
@@ -566,7 +716,9 @@ public:
 
         txWrite(fdVfs[fd]->seek(fds[fd], offset));
 
+#ifdef EMULATOR
         fi[fd].offset = fdVfs[fd]->tell(fds[fd]);
+#endif
     }
     void cmdTell(uint8_t fd) {
         DBGF("TELL(fd=%u)", fd);
@@ -645,10 +797,12 @@ public:
             deIdx[dd]  = skipCount;
             txWrite(dd);
 
+#ifdef EMULATOR
             DirInfo tmp;
             tmp.name   = pathArg;
             tmp.offset = 0;
             di.insert(std::make_pair(dd, tmp));
+#endif
         }
     }
     void cmdCloseDir(uint8_t dd) {
@@ -662,10 +816,12 @@ public:
         deCtxs[dd] = nullptr;
         txWrite(0);
 
+#ifdef EMULATOR
         auto it = di.find(dd);
         if (it != di.end()) {
             di.erase(it);
         }
+#endif
     }
     void cmdReadDir(uint8_t dd) {
         DBGF("READDIR(dd=%u)", dd);
@@ -696,7 +852,9 @@ public:
         txWrite(de.filename.c_str(), de.filename.size());
         txWrite(0);
 
+#ifdef EMULATOR
         di[dd].offset++;
+#endif
     }
     void cmdDelete(const char *pathArg) {
         DBGF("DELETE(path='%s')", pathArg);
@@ -819,8 +977,10 @@ public:
         closeAllDescriptors();
         txWrite(0);
 
+#ifdef EMULATOR
         fi.clear();
         di.clear();
+#endif
     }
     void cmdLoadFpga(const char *pathArg) {
         DBGF("LOADFPGA(path='%s')", pathArg);
@@ -942,6 +1102,7 @@ public:
         std::string result;
         for (auto &part : parts) {
 
+#ifdef EMULATOR
 #ifndef _WIN32
             // Handle case-sensitive host file systems
             auto curPartUpper = toUpper(part);
@@ -956,6 +1117,7 @@ public:
                     }
                 }
             }
+#endif
 #endif
 
             if (!result.empty())
