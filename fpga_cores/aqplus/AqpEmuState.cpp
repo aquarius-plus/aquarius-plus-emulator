@@ -144,6 +144,7 @@ public:
     bool    sysCtrlWarmBoot       = false; // $FB<7>: R0:Cold boot, R1:Warm boot
     bool    soundOutput           = false; // $FC<1>: Cassette/Sound output
     bool    cpmRemap              = false; // $FD<1>: Remap memory for CP/M
+    bool    forceTurbo            = false;
 
     // Keyboard buffer
     uint8_t kbBuf[16];
@@ -364,6 +365,13 @@ public:
                     break;
                 }
 
+                case CMD_FORCE_TURBO: {
+                    if (txBuf.size() >= 1 + 1) {
+                        forceTurbo = txBuf[1];
+                    }
+                    break;
+                }
+
                 case CMD_WRITE_KBBUF: {
                     if (txBuf.size() >= 1 + 1) {
                         kbBufWrite(txBuf[1]);
@@ -525,7 +533,7 @@ public:
 
         int delta = 0;
         {
-            int deltaDiv = sysCtrlTurbo ? (sysCtrlTurboUnlimited ? 4 : 2) : 1;
+            int deltaDiv = forceTurbo ? 4 : (sysCtrlTurbo ? (sysCtrlTurboUnlimited ? 4 : 2) : 1);
             for (int i = 0; i < deltaDiv; i++) delta += cpuEmulate();
             delta /= deltaDiv;
         }
