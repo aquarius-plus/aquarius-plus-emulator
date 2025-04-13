@@ -53,6 +53,21 @@ void Config::load() {
         showEspInfo         = getBoolValue(root, "showEspInfo", false);
         stopOnHalt          = getBoolValue(root, "stopOnHalt", false);
 
+        // Read all NVS U8 items
+        {
+            nvs_u8.clear();
+            if (auto obj = cJSON_GetObjectItem(root, "nvs_u8")) {
+                cJSON *item;
+                cJSON_ArrayForEach(item, obj) {
+                    if (item->type != cJSON_Number)
+                        continue;
+
+                    uint8_t val = item->valueint;
+                    printf("%s: %u\n", item->string, val);
+                    nvs_u8.insert_or_assign(item->string, val);
+                }
+            }
+        }
         auto emuState = EmuState::get();
         if (emuState) {
             emuState->loadConfig(root);
@@ -100,6 +115,14 @@ void Config::save() {
     cJSON_AddBoolToObject(root, "stopOnHalt", stopOnHalt);
 
     cJSON_AddNumberToObject(root, "memEditMemSelect", memEditMemSelect);
+
+    // Store all NVS U8 items
+    {
+        cJSON *obj = cJSON_AddObjectToObject(root, "nvs_u8");
+        for (auto &item : nvs_u8) {
+            cJSON_AddNumberToObject(obj, item.first.c_str(), item.second);
+        }
+    }
 
     auto emuState = EmuState::get();
     if (emuState) {

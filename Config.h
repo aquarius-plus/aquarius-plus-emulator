@@ -21,6 +21,8 @@ public:
     void load();
     void save();
 
+    std::map<std::string, uint8_t> nvs_u8;
+
     std::string appDataPath;
     std::string configPath;
     std::string imguiConf;

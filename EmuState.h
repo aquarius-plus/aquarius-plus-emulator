@@ -14,6 +14,8 @@ class EmuState {
 public:
     static EmuState *get();
 
+    virtual void init() = 0;
+
     virtual void loadConfig(cJSON *root) = 0;
     virtual void saveConfig(cJSON *root) = 0;
 

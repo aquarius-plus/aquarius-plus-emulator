@@ -97,7 +97,9 @@ public:
         Audio::instance()->start();
 
         // Run main loop
+        FPGA::instance()->init();
         FreeRtosMock_init();
+        EmuState::get()->init();
         mainLoop();
         FreeRtosMock_deinit();
 
