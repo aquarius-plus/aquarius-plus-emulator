@@ -164,10 +164,17 @@ public:
         z80ctx.memWrite = _memWrite;
         z80ctx.memParam = reinterpret_cast<uintptr_t>(this);
 
+        loadConfig();
+
         reset(true);
     }
 
-    void loadConfig(cJSON *root) override {
+    virtual ~AqpEmuState() {
+        saveConfig();
+    }
+
+    void loadConfig() {
+        auto root           = Config::instance()->loadConfigFile("aqplus.json");
         auto cfgBreakpoints = cJSON_GetObjectItem(root, "breakpoints");
         if (cJSON_IsArray(cfgBreakpoints)) {
             cJSON *breakpoint;
@@ -204,9 +211,12 @@ public:
                 watches.push_back(w);
             }
         }
+
+        cJSON_Delete(root);
     }
 
-    void saveConfig(cJSON *root) override {
+    void saveConfig() {
+        auto root = cJSON_CreateObject();
         cJSON_AddBoolToObject(root, "enableBreakpoints", enableBreakpoints);
         cJSON_AddBoolToObject(root, "traceEnable", traceEnable);
         cJSON_AddNumberToObject(root, "traceDepth", traceDepth);
@@ -233,6 +243,7 @@ public:
             cJSON_AddNumberToObject(watch, "type", (int)w.type);
             cJSON_AddItemToArray(cfgWatches, watch);
         }
+        Config::instance()->saveConfigFile("aqplus.json", root);
     }
 
     void reset(bool cold) override {

@@ -16,7 +16,9 @@ class Config {
 public:
     static Config *instance();
 
-    void init(const std::string &appDataPath);
+    void   init(const std::string &appDataPath);
+    cJSON *loadConfigFile(const std::string &filename);
+    void   saveConfigFile(const std::string &filename, cJSON *root);
 
     void load();
     void save();
@@ -24,7 +26,6 @@ public:
     std::map<std::string, uint8_t> nvs_u8;
 
     std::string appDataPath;
-    std::string configPath;
     std::string imguiConf;
     std::string sdCardPath;
     std::string asmListingPath;

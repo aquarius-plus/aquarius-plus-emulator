@@ -96,6 +96,7 @@ public:
             emuState->pasteText(typeInStr);
         mainLoop();
         FreeRtosMock_deinit();
+        EmuState::loadCore("");
 
         // Deinitialize
         ImGui_ImplSDLRenderer2_Shutdown();

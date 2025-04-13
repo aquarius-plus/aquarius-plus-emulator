@@ -12,20 +12,34 @@ Config *Config::instance() {
 
 void Config::init(const std::string &_appDataPath) {
     appDataPath = _appDataPath;
-    configPath  = appDataPath + "/config.json";
     load();
     save();
 }
 
-void Config::load() {
-    std::string jsonStr = "{}";
-
-    std::ifstream ifs(configPath);
+cJSON *Config::loadConfigFile(const std::string &filename) {
+    std::string   jsonStr = "{}";
+    std::ifstream ifs(appDataPath + "/" + filename);
     if (ifs.good()) {
         jsonStr = std::string((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
     }
 
-    if (auto root = cJSON_ParseWithLength(jsonStr.c_str(), jsonStr.size())) {
+    auto root = cJSON_ParseWithLength(jsonStr.c_str(), jsonStr.size());
+    return root;
+}
+
+void Config::saveConfigFile(const std::string &filename, cJSON *root) {
+    auto          path = appDataPath + "/" + filename;
+    std::ofstream ofs(path);
+    if (ofs.good()) {
+        auto str = cJSON_Print(root);
+        ofs.write(str, strlen(str));
+        cJSON_free(str);
+    }
+    cJSON_Delete(root);
+}
+
+void Config::load() {
+    if (auto root = loadConfigFile("config.json")) {
         imguiConf      = getStringValue(root, "imguiConfig", "");
         sdCardPath     = getStringValue(root, "sdCardPath", "");
         asmListingPath = getStringValue(root, "asmListingPath", "");
@@ -66,10 +80,6 @@ void Config::load() {
                     nvs_u8.insert_or_assign(item->string, val);
                 }
             }
-        }
-        auto emuState = EmuState::get();
-        if (emuState) {
-            emuState->loadConfig(root);
         }
 
         memEditMemSelect = getIntValue(root, "memEditMemSelect", 0);
@@ -123,17 +133,5 @@ void Config::save() {
         }
     }
 
-    auto emuState = EmuState::get();
-    if (emuState) {
-        emuState->saveConfig(root);
-    }
-
-    std::ofstream ofs(configPath);
-    if (!ofs.good())
-        return;
-
-    auto str = cJSON_Print(root);
-    ofs.write(str, strlen(str));
-    cJSON_free(str);
-    cJSON_Delete(root);
+    saveConfigFile("config.json", root);
 }

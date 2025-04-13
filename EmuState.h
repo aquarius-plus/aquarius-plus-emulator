@@ -15,9 +15,6 @@ public:
     static std::shared_ptr<EmuState> get();
     static void                      loadCore(const std::string &name);
 
-    virtual void loadConfig(cJSON *root) = 0;
-    virtual void saveConfig(cJSON *root) = 0;
-
     virtual void reset(bool cold = false)                        = 0;
     virtual bool emulate(int16_t *audioBuf, unsigned numSamples) = 0;
     virtual void getVideoSize(int &w, int &h)                    = 0;
