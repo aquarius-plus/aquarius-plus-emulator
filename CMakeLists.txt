@@ -56,6 +56,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     fpga_cores/aqplus/AqpVideo.cpp
     fpga_cores/aqplus/AY8910.cpp
 
+    esp32/main.cpp
     esp32/FPGA.cpp
     esp32/Keyboard.cpp
     esp32/UartProtocol.cpp

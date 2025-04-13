@@ -24,6 +24,8 @@
 #include "lodepng.h"
 #include "FpgaCore.h"
 
+extern "C" void app_main(void);
+
 class UIInt : public UI {
 public:
     SDL_Texture        *texture     = nullptr;
@@ -41,11 +43,6 @@ public:
         auto config = Config::instance();
 
         memset(&gamePadData, 0, sizeof(gamePadData));
-
-        auto emuState = EmuState::get();
-        emuState->pasteText(typeInStr);
-
-        UartProtocol::instance()->init();
         setSDCardPath(config->sdCardPath);
 
         if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0) {
@@ -99,7 +96,9 @@ public:
         // Run main loop
         FPGA::instance()->init();
         FreeRtosMock_init();
+        app_main();
         EmuState::get()->init();
+        EmuState::get()->pasteText(typeInStr);
         mainLoop();
         FreeRtosMock_deinit();
 

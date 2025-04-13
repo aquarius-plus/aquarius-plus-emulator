@@ -2,6 +2,8 @@
 #include "Config.h"
 
 esp_err_t nvs_flash_erase() {
+    auto config = Config::instance();
+    config->nvs_u8.clear();
     return ESP_OK;
 }
 

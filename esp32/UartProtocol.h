@@ -35,8 +35,7 @@ class UartProtocol {
 public:
     static UartProtocol *instance();
 
-    virtual void        init()           = 0;
-    virtual std::string getCurrentPath() = 0;
+    virtual void init() = 0;
 
     // Only to be called from command handler
     virtual void txStart()                               = 0;
@@ -48,6 +47,8 @@ public:
     virtual void    writeData(uint8_t data) = 0;
     virtual uint8_t readCtrl()              = 0;
     virtual uint8_t readData()              = 0;
+
+    virtual std::string getCurrentPath() = 0;
 
     struct FileInfo {
         uint8_t     flags;
