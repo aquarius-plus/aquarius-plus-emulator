@@ -4,6 +4,7 @@
 #include "UartProtocol.h"
 #include "VFS.h"
 #include "GameCtrl.h"
+#define _USE_MATH_DEFINES
 #include <math.h>
 #include <nvs_flash.h>
 #include "XzDecompress.h"

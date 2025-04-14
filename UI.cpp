@@ -455,14 +455,14 @@ public:
                     // Update mouse
                     const ImVec2 p0((float)dst.x, (float)dst.y);
                     const ImVec2 p1((float)(dst.x + dst.w), (float)(dst.y + dst.h));
-                    auto         pos = (io.MousePos - p0) / (p1 - p0) * ImVec2(textureWidth, textureHeight);
+                    auto         pos = (io.MousePos - p0) / (p1 - p0) * ImVec2((float)textureWidth, (float)textureHeight);
 
                     uint8_t buttonMask =
                         (io.MouseDown[0] ? 1 : 0) |
                         (io.MouseDown[1] ? 2 : 0) |
                         (io.MouseDown[2] ? 4 : 0);
 
-                    getFpgaCore()->mouseReport(pos.x, pos.y, buttonMask, (int)io.MouseWheel, true);
+                    getFpgaCore()->mouseReport((int)pos.x, (int)pos.y, buttonMask, (int)io.MouseWheel, true);
                 }
             }
 
@@ -583,7 +583,7 @@ public:
                 draw_list->AddImage((ImTextureID)texture, p0, p1, {0, 0}, {1, 1});
 
                 ImGuiIO &io  = ImGui::GetIO();
-                auto     pos = (io.MousePos - p0) / (p1 - p0) * ImVec2(textureWidth, textureHeight);
+                auto     pos = (io.MousePos - p0) / (p1 - p0) * ImVec2((float)textureWidth, (float)textureHeight);
 
                 uint8_t buttonMask =
                     (io.MouseDown[0] ? 1 : 0) |
@@ -604,7 +604,7 @@ public:
                     update = true;
                 }
                 if (update) {
-                    getFpgaCore()->mouseReport(pos.x, pos.y, buttonMask, (int)io.MouseWheel, true);
+                    getFpgaCore()->mouseReport((int)pos.x, (int)pos.y, buttonMask, (int)io.MouseWheel, true);
                 }
             }
             allowTyping = ImGui::IsWindowFocused();
