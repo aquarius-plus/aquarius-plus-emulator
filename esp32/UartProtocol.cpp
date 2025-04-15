@@ -28,7 +28,15 @@ static const char *TAG = "UartProtocol";
 #ifndef EMULATOR
 #define DBGF(...) ESP_LOGI(TAG, __VA_ARGS__)
 #else
-#define DBGF(...) printf(__VA_ARGS__)
+static void dprintf(const char *fmt, ...) {
+    va_list va;
+    va_start(va, fmt);
+    vprintf(fmt, va);
+    printf("\n");
+    va_end(va);
+}
+
+#define DBGF(...) dprintf(__VA_ARGS__)
 #endif
 #else
 #define DBGF(...)
