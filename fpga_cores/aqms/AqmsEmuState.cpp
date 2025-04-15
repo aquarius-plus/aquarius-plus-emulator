@@ -2,6 +2,7 @@
 #include "DCBlock.h"
 #include "Z80Core.h"
 #include "VDP.h"
+#include "SN76489.h"
 #include "aqmsrom.h"
 #include "UartProtocol.h"
 #include "FPGA.h"
@@ -13,6 +14,7 @@ class AqmsEmuState : public EmuState, VDPInterruptDelegate {
 public:
     Z80Core z80Core;
     VDP     vdp;
+    SN76489 psg;
 
     int      lineHalfCycles   = 0; // Half-cycles for this line
     int      sampleHalfCycles = 0; // Half-cycles for this sample
@@ -77,6 +79,8 @@ public:
 
     virtual void reset(bool cold = false) override {
         z80Core.reset();
+        vdp.reset();
+        psg.reset();
         startupMode = true;
         regionBits  = 3;
     }
@@ -193,7 +197,7 @@ public:
                 }
 
                 case 0x40:                                     // 0x7E
-                case 0x41: /*psg.regWrite(data);*/ return;     // 0x7F  - SN76489 PSG
+                case 0x41: psg.write(data); return;            // 0x7F  - SN76489 PSG
                 case 0x80: vdp.writeDataPort(data); return;    // 0xBE  - VDP data port
                 case 0x81: vdp.writeControlPort(data); return; // 0xBF  - VDP control port
                 case 0xC0: return;                             // 0xDC, 0xDE
@@ -284,24 +288,13 @@ public:
         if (sampleHalfCycles >= HCYCLES_PER_SAMPLE) {
             sampleHalfCycles -= HCYCLES_PER_SAMPLE;
 
-            // Take average of 5 AY8910 samples to match sampling rate (16*5*44100 = 3.528MHz)
             audioLeft  = 0;
             audioRight = 0;
-
-            // for (int i = 0; i < 5; i++) {
-            //     uint16_t abc[3];
-            //     ay1.render(abc);
-            //     audioLeft += 2 * abc[0] + 2 * abc[1] + 1 * abc[2];
-            //     audioRight += 1 * abc[0] + 2 * abc[1] + 2 * abc[2];
-
-            //     ay2.render(abc);
-            //     audioLeft += 2 * abc[0] + 2 * abc[1] + 1 * abc[2];
-            //     audioRight += 1 * abc[0] + 2 * abc[1] + 2 * abc[2];
-
-            //     audioLeft += (audioDAC << 4);
-            //     audioRight += (audioDAC << 4);
-            // }
-
+            for (int i = 0; i < 5; i++) {
+                uint16_t val = psg.render() * 3;
+                audioLeft += val;
+                audioRight += val;
+            }
             resultFlags |= ERF_NEW_AUDIO_SAMPLE;
         }
 

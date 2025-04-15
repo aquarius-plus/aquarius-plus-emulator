@@ -11,6 +11,8 @@ class VDP {
 public:
     VDP(VDPInterruptDelegate &interruptDelegate);
 
+    void reset();
+
     bool renderLine();
 
     // Registers

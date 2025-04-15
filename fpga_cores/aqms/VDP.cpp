@@ -41,6 +41,40 @@ VDP::VDP(VDPInterruptDelegate &interruptDelegate)
     : interruptDelegate(interruptDelegate) {
 }
 
+void VDP::reset() {
+    line        = 0;
+    lineCounter = 0xFF;
+
+    bfToggle        = false;
+    vsyncIrqPending = false;
+    lineIrqPending  = false;
+    sprOverflow     = false;
+    sprCollision    = false;
+
+    vdpCodeReg = 0;
+    vdpAddr    = 0;
+    readBuffer = 0;
+
+    reg0VscrollInhibit = false;
+    reg0HscrollInhibit = false;
+    reg0LeftColBlank   = false;
+    reg0LineIrqEn      = false;
+    reg0SpriteShiftBit = false;
+    reg1ScreenEn       = false;
+    reg1VblankIrqEn    = false;
+    reg1SprH16         = false;
+    reg1SprMag         = false;
+    reg2ScrMapBase     = 0;
+    reg5SprAttrBase    = 0;
+    reg6SprPatBase     = 0;
+    reg7BorderColIdx   = 0;
+    reg8HScroll        = 0;
+    reg9VScroll        = 0;
+    reg10RasterIrqLine = 0;
+
+    reg9VScrollLatched = 0;
+}
+
 uint8_t VDP::readControlPort() {
     uint8_t result = 0;
     if (vsyncIrqPending)
