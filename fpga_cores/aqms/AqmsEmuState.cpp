@@ -29,8 +29,7 @@ public:
     uint8_t romFrame2Page = 2; // $8000-$BFFF
     uint8_t romFrame1Page = 1; // $4000-$7FFF
     uint8_t romFrame0Page = 0; // $0400-$3FFF
-    uint8_t ramControlReg = 0;
-    uint8_t joystickData2 = 0xFF;
+    uint8_t regionBits    = 3;
 
     uint8_t keybMatrix[8] = {0}; // Keyboard matrix (8 x 6bits)
 
@@ -79,6 +78,7 @@ public:
     virtual void reset(bool cold = false) override {
         z80Core.reset();
         startupMode = true;
+        regionBits  = 3;
     }
 
     void VDPInterrupt(bool fromLineRender) override { z80Core.pendIrq(); }
@@ -100,11 +100,7 @@ public:
         if (addr < 0x8000)
             return cartRom[((uint32_t)romFrame1Page << 14) | (addr & 0x3FFF)];
         if (addr < 0xC000) {
-            if ((ramControlReg & 0x08) == 0) {
-                return cartRom[((uint32_t)romFrame2Page << 14) | (addr & 0x3FFF)];
-            } else {
-                return cartRam[addr & 0x1FFF];
-            }
+            return cartRom[((uint32_t)romFrame2Page << 14) | (addr & 0x3FFF)];
         }
         return systemRam[addr & 0x1FFF];
     }
@@ -121,12 +117,32 @@ public:
         } else if (addr == 0xFFFD) {
             romFrame0Page = data & 31; //(romPageCount - 1);
         } else if (addr == 0xFFFC) {
-            startupMode   = false;
-            ramControlReg = data;
+            startupMode = false;
         }
         if (addr >= 0xC000) {
             systemRam[addr & 0x1FFF] = data;
         }
+    }
+
+    uint8_t getIoDC() {
+        uint8_t joypadData = 0xFF;
+        if ((keybMatrix[5] & (1 << 5)) == 0) // x
+            joypadData &= ~(1 << 5);
+        if ((keybMatrix[6] & (1 << 3)) == 0) // z
+            joypadData &= ~(1 << 4);
+        if ((keybMatrix[1] & (1 << 7)) == 0) // right
+            joypadData &= ~(1 << 3);
+        if ((keybMatrix[2] & (1 << 6)) == 0) // left
+            joypadData &= ~(1 << 2);
+        if ((keybMatrix[2] & (1 << 7)) == 0) // down
+            joypadData &= ~(1 << 1);
+        if ((keybMatrix[1] & (1 << 6)) == 0) // up
+            joypadData &= ~(1 << 0);
+        return joypadData;
+    }
+
+    uint8_t getIoDD() {
+        return (regionBits << 6) | 0x3F;
     }
 
     uint8_t ioRead(uint16_t addr) {
@@ -144,27 +160,10 @@ public:
                 case 0x01: return 0xFF;                  // 0x3F
                 case 0x40: return vdp.regVCounterRead(); // 0x7E
                 case 0x41: return vdp.regHCounterRead(); // 0x7F
-                case 0x80: return vdp.regDataRead();     // 0xBE  - VDP data port
-                case 0x81: return vdp.regControlRead();  // 0xBF  - VDP control port -> status
-                case 0xC0: {
-                    uint8_t joypadData = 0xFF;
-                    if ((keybMatrix[5] & (1 << 5)) == 0) // x
-                        joypadData &= ~(1 << 5);
-                    if ((keybMatrix[6] & (1 << 3)) == 0) // z
-                        joypadData &= ~(1 << 4);
-                    if ((keybMatrix[1] & (1 << 7)) == 0) // right
-                        joypadData &= ~(1 << 3);
-                    if ((keybMatrix[2] & (1 << 6)) == 0) // left
-                        joypadData &= ~(1 << 2);
-                    if ((keybMatrix[2] & (1 << 7)) == 0) // down
-                        joypadData &= ~(1 << 1);
-                    if ((keybMatrix[1] & (1 << 6)) == 0) // up
-                        joypadData &= ~(1 << 0);
-                    return joypadData;
-                }
-                case 0xC1: {
-                    return joystickData2; // 0xDD - Joypad port 2
-                }
+                case 0x80: return vdp.readDataPort();    // 0xBE  - VDP data port
+                case 0x81: return vdp.readControlPort(); // 0xBF  - VDP control port -> status
+                case 0xC0: return getIoDC();             // 0xDC - Joypad port 1
+                case 0xC1: return getIoDD();             // 0xDD - Joypad port 2
                 default: break;
             }
         }
@@ -189,17 +188,16 @@ public:
                 //     cout << "port3E: " << toHex(data) << endl;
                 //     return;  // 0x3E - Memory enables
                 case 0x01: { // 0x3F
-                    // Data direction and output register
-                    joystickData2 = (data & 0x80) | ((data & 0x20) << 1) | (joystickData2 & 0x3F);
+                    regionBits = (((data >> 7) & 1) << 1) | ((data >> 5) & 1);
                     return;
                 }
 
-                case 0x40:                                    // 0x7E
-                case 0x41: /*psg.regWrite(data);*/ return;    // 0x7F  - SN76489 PSG
-                case 0x80: vdp.regDataWrite(data); return;    // 0xBE  - VDP data port
-                case 0x81: vdp.regControlWrite(data); return; // 0xBF  - VDP control port
-                case 0xC0: return;                            // 0xDC, 0xDE
-                case 0xC1: return;                            // 0xDD, 0xDF
+                case 0x40:                                     // 0x7E
+                case 0x41: /*psg.regWrite(data);*/ return;     // 0x7F  - SN76489 PSG
+                case 0x80: vdp.writeDataPort(data); return;    // 0xBE  - VDP data port
+                case 0x81: vdp.writeControlPort(data); return; // 0xBF  - VDP control port
+                case 0xC0: return;                             // 0xDC, 0xDE
+                case 0xC1: return;                             // 0xDD, 0xDF
                 default: break;
             }
         }

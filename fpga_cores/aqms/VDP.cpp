@@ -8,10 +8,6 @@
 
 #define VDP_DEBUG 0
 
-int VDP::numLines() {
-    return 262;
-}
-
 // vdpReg0:
 // 7 VScroll inhibit
 // 6 HScroll inhibit
@@ -45,15 +41,25 @@ VDP::VDP(VDPInterruptDelegate &interruptDelegate)
     : interruptDelegate(interruptDelegate) {
 }
 
-uint8_t VDP::regControlRead() {
-    uint8_t result = vdpStatus;
-    vdpStatus &= 0x1f;
-    bf_toggle = false;
+uint8_t VDP::readControlPort() {
+    uint8_t result = 0;
+    if (vsyncIrqPending)
+        result |= 0x80;
+    if (sprOverflow)
+        result |= 0x40;
+    if (sprCollision)
+        result |= 0x20;
+
+    bfToggle        = false;
+    vsyncIrqPending = false;
+    lineIrqPending  = false;
+    sprOverflow     = false;
+    sprCollision    = false;
     return result;
 }
 
-void VDP::regControlWrite(uint8_t data) {
-    if (!bf_toggle) {
+void VDP::writeControlPort(uint8_t data) {
+    if (!bfToggle) {
         vdpAddr = (vdpAddr & 0x3F00) | data;
     } else {
         vdpCodeReg = data >> 6;
@@ -61,32 +67,56 @@ void VDP::regControlWrite(uint8_t data) {
 
         if (vdpCodeReg == 0) {
             // Read VDP ram
-            rd_data_port_buffer = vram[vdpAddr];
-            vdpAddr             = (vdpAddr + 1) & 0x3FFF;
+            readBuffer = vram[vdpAddr];
+            vdpAddr    = (vdpAddr + 1) & 0x3FFF;
 
         } else if (vdpCodeReg == 2) {
             // Write VDP register
-            if ((data & 0xF) < 11) {
-                vdpReg[data & 0xF] = vdpAddr & 0xFF;
+            uint8_t reg = (vdpAddr >> 8) & 0xF;
+            uint8_t val = vdpAddr & 0xFF;
+
+            switch (reg) {
+                case 0: {
+                    reg0VscrollInhibit = (val & 0x80) != 0;
+                    reg0HscrollInhibit = (val & 0x40) != 0;
+                    reg0LeftColBlank   = (val & 0x20) != 0;
+                    reg0LineIrqEn      = (val & 0x10) != 0;
+                    reg0SpriteShiftBit = (val & 0x08) != 0;
+                    break;
+                }
+                case 1: {
+                    reg1ScreenEn    = (val & 0x40) != 0;
+                    reg1VblankIrqEn = (val & 0x20) != 0;
+                    reg1SprH16      = (val & 0x02) != 0;
+                    reg1SprMag      = (val & 0x01) != 0;
+                    break;
+                }
+                case 2: reg2ScrMapBase = val; break;
+                case 5: reg5SprAttrBase = val; break;
+                case 6: reg6SprPatBase = val; break;
+                case 7: reg7BorderColIdx = val & 0xF; break;
+                case 8: reg8HScroll = val; break;
+                case 9: reg9VScroll = val; break;
+                case 10: reg10RasterIrqLine = val; break;
             }
         }
     }
-    bf_toggle = !bf_toggle;
+    bfToggle = !bfToggle;
 }
 
-uint8_t VDP::regDataRead() {
-    bf_toggle = false;
+uint8_t VDP::readDataPort() {
+    uint8_t result = readBuffer;
+    readBuffer     = vram[vdpAddr];
 
-    uint8_t result      = rd_data_port_buffer;
-    rd_data_port_buffer = vram[vdpAddr];
-    vdpAddr             = (vdpAddr + 1) & 0x3FFF;
+    bfToggle = false;
+    vdpAddr  = (vdpAddr + 1) & 0x3FFF;
     return result;
 }
 
-void VDP::regDataWrite(uint8_t data) {
-    bf_toggle = false;
+void VDP::writeDataPort(uint8_t data) {
+    bfToggle = false;
 
-    rd_data_port_buffer = data;
+    readBuffer = data;
     if (vdpCodeReg == 3) {
         uint8_t r = (data >> 0) & 3;
         uint8_t g = (data >> 2) & 3;
@@ -96,7 +126,7 @@ void VDP::regDataWrite(uint8_t data) {
         g = (g << 6) | (g << 4) | (g << 2) | g;
         b = (b << 6) | (b << 4) | (b << 2) | b;
 
-        cram[vdpAddr & 31] = (r << 0) | (g << 8) | (b << 16);
+        cram[vdpAddr & 31] = (b << 16) | (g << 8) | (r << 0);
 
     } else {
         vram[vdpAddr] = data;
@@ -117,24 +147,15 @@ uint8_t VDP::regHCounterRead() {
 }
 
 bool VDP::isIrqPending() {
-    return (
-        (vdpStatus & 0x80) != 0 && (vdpReg[1] & 0x20) != 0);
+    return ((lineIrqPending && reg0LineIrqEn) || (vsyncIrqPending && reg1VblankIrqEn));
 }
 
 void VDP::renderBackground(uint32_t *lineBuf, uint8_t *pixelInFrontOfSpriteBuf) {
-    uint8_t offsetX = vdpReg[8];             // x-scroll
-    int     offsetY = line + vdpReg9latched; // y-scroll
+    uint8_t offsetX = (reg0HscrollInhibit && line < 16) ? 0 : reg8HScroll;
+    int     offsetY = line + reg9VScrollLatched; // y-scroll
 
-    bool hscrollInhibit = (vdpReg[0] & 0x40) != 0;
-    if (hscrollInhibit && line < 16) {
-        offsetX = 0;
-    }
-    bool vscrollInhibit = (vdpReg[0] & 0x80) != 0;
-
-    uint16_t mapBase = (vdpReg[2] & 0x0E) << 9;
+    uint16_t mapBase = (reg2ScrMapBase & 0x0E) << 9;
     uint16_t addr    = mapBase + 32 * ((offsetY / 8) % 28);
-
-    bool leftColumnBlank = (vdpReg[0] & 0x20) != 0;
 
     // Render tilemap
     for (int i = 0; i < 32; i++) {
@@ -175,11 +196,10 @@ void VDP::renderBackground(uint32_t *lineBuf, uint8_t *pixelInFrontOfSpriteBuf) 
             // background color index 0 is always behind sprites
             pixelInFrontOfSpriteBuf[offsetX] = colorIdx == 0 ? 0 : tileInFrontOfSprites;
 
-            if (leftColumnBlank && offsetX < 8) {
-                color                            = cram[16 + (vdpReg[7] & 0xF)];
+            if (reg0LeftColBlank && offsetX < 8) {
+                color                            = cram[16 + reg7BorderColIdx];
                 pixelInFrontOfSpriteBuf[offsetX] = true;
             }
-
             lineBuf[offsetX++] = color;
         }
     }
@@ -189,16 +209,12 @@ void VDP::renderSprites(uint32_t *lineBuf, const uint8_t *pixelInFrontOfSpriteBu
     uint8_t spritePixelDrawn[256];
     memset(spritePixelDrawn, 0, sizeof(spritePixelDrawn));
 
-    bool leftColumnBlank = (vdpReg[0] & 0x20) != 0;
-
     int line2 = line - 1;
 
-    bool     doubleHeight        = (vdpReg[1] & 0x02) != 0;
-    uint16_t spritePatternBase   = ((vdpReg[6] & 0x04) == 0) ? 0x0000 : 0x2000;
-    uint16_t spriteAttributeBase = (vdpReg[5] & 0x7E) << 7;
-
-    uint8_t spritesDrawnCount = 0;
-    uint8_t spritesToDraw[8];
+    uint16_t spritePatternBase   = ((reg6SprPatBase & 0x04) == 0) ? 0x0000 : 0x2000;
+    uint16_t spriteAttributeBase = (reg5SprAttrBase & 0x7E) << 7;
+    uint8_t  spritesDrawnCount   = 0;
+    uint8_t  spritesToDraw[8];
 
     for (int i = 0; i < 64; i++) {
         int vpos = vram[spriteAttributeBase + i];
@@ -210,13 +226,13 @@ void VDP::renderSprites(uint32_t *lineBuf, const uint8_t *pixelInFrontOfSpriteBu
             vpos -= 256;
         }
 
-        int vpos2 = vpos + (doubleHeight ? 16 : 8) - 1;
+        int vpos2 = vpos + (reg1SprH16 ? 16 : 8) - 1;
         if (line2 < vpos || line2 > vpos2) {
             continue;
         }
 
         if (spritesDrawnCount >= 8) {
-            vdpStatus |= 0x40;
+            sprOverflow = true;
             break;
         }
         spritesToDraw[spritesDrawnCount++] = i;
@@ -233,7 +249,7 @@ void VDP::renderSprites(uint32_t *lineBuf, const uint8_t *pixelInFrontOfSpriteBu
         uint8_t hpos     = vram[spriteAttributeBase + 0x80 + spriteIdx * 2 + 0];
         uint8_t charcode = vram[spriteAttributeBase + 0x80 + spriteIdx * 2 + 1];
 
-        if (doubleHeight) {
+        if (reg1SprH16) {
             charcode &= ~1;
         }
 
@@ -269,58 +285,52 @@ void VDP::renderSprites(uint32_t *lineBuf, const uint8_t *pixelInFrontOfSpriteBu
 
             uint32_t color = cram[16 + colorIdx];
 
-            if ((leftColumnBlank && x < 8) || pixelInFrontOfSpriteBuf[x]) {
+            if ((reg0LeftColBlank && x < 8) || pixelInFrontOfSpriteBuf[x]) {
                 continue;
             }
 
             if (spritePixelDrawn[x]) {
                 // two sprites touched
-                vdpStatus |= 0x20;
+                sprCollision = true;
             }
 
             lineBuf[x]          = color;
             spritePixelDrawn[x] = 1;
         }
 
-        if (vdpReg[0] & 0x08) {
-            printf("Sprite shift\n");
+        if (reg0SpriteShiftBit) {
+            // printf("Sprite shift\n");
         }
     }
 }
 
 bool VDP::renderLine() {
     if (line == 0) {
-        vdpReg9latched = vdpReg[9];
+        reg9VScrollLatched = reg9VScroll;
     }
 
     if (line < 192) {
-        uint32_t *fbp       = &framebuffer[line * 256];
-        bool      displayOn = (vdpReg[1] & 0x40) != 0;
-
-        if (!displayOn) {
+        uint32_t *fbp = &framebuffer[line * 256];
+        if (!reg1ScreenEn) {
             memset(fbp, 0, 256 * sizeof(uint32_t));
         } else {
             uint8_t pixelInFrontOfSprites[256];
-
             renderBackground(fbp, pixelInFrontOfSprites);
             renderSprites(fbp, pixelInFrontOfSprites);
         }
     }
 
     if (line == 193) {
-        vdpStatus |= 0x80;
+        vsyncIrqPending = true;
     }
 
     if (line < 193) {
         lineCounter--;
         if (lineCounter == 0xFF) {
-            lineCounter = vdpReg[10];
-
-            // Line interrupts are only generated once (they do not pend)
-            interruptDelegate.VDPInterrupt(true);
+            lineCounter = reg10RasterIrqLine;
         }
     } else {
-        lineCounter = vdpReg[10];
+        lineCounter = reg10RasterIrqLine;
     }
 
     if (line == 261) {
