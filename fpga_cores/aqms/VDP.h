@@ -2,14 +2,9 @@
 
 #include "Common.h"
 
-class VDPInterruptDelegate {
-public:
-    virtual void VDPInterrupt(bool fromLineRender) = 0;
-};
-
 class VDP {
 public:
-    VDP(VDPInterruptDelegate &interruptDelegate);
+    VDP();
 
     void reset();
 
@@ -32,8 +27,6 @@ public:
     void renderSprites(uint32_t *lineBuf, const uint8_t *pixelInFrontOfSpriteBuf);
 
     bool isIrqPending();
-
-    VDPInterruptDelegate &interruptDelegate;
 
     uint32_t framebuffer[256 * 192];
 

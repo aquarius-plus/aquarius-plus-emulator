@@ -10,7 +10,7 @@
 #define HCYCLES_PER_LINE   (455)
 #define HCYCLES_PER_SAMPLE (162)
 
-class AqmsEmuState : public EmuState, VDPInterruptDelegate {
+class AqmsEmuState : public EmuState {
 public:
     Z80Core z80Core;
     VDP     vdp;
@@ -35,7 +35,7 @@ public:
 
     uint8_t keybMatrix[8] = {0}; // Keyboard matrix (8 x 6bits)
 
-    AqmsEmuState() : vdp(*this) {
+    AqmsEmuState() {
         coreType         = 1;
         coreFlags        = 0;
         coreVersionMajor = 1;
@@ -84,8 +84,6 @@ public:
         startupMode = true;
         regionBits  = 3;
     }
-
-    void VDPInterrupt(bool fromLineRender) override { z80Core.pendIrq(); }
 
     uint8_t memRead(uint16_t addr) {
         if (startupMode) {

@@ -37,8 +37,7 @@
 // vdpReg9: vertical scroll value
 // vdpReg10: raster line interrupt
 
-VDP::VDP(VDPInterruptDelegate &interruptDelegate)
-    : interruptDelegate(interruptDelegate) {
+VDP::VDP() {
 }
 
 void VDP::reset() {
