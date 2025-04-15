@@ -627,6 +627,24 @@ public:
         ImGui::MenuItem("Memory editor", "", &showMemEdit);
         ImGui::MenuItem("IO Registers", "", &showIoRegsWindow);
         z80Core.dbgMenu();
+
+        ImGui::Separator();
+        if (ImGui::MenuItem("Clear memory (0x00) & reset Aquarius+", "")) {
+            memset(video.screenRam, 0, sizeof(video.screenRam));
+            memset(video.colorRam, 0, sizeof(video.colorRam));
+            memset(mainRam, 0, sizeof(mainRam));
+            memset(video.videoRam, 0, sizeof(video.videoRam));
+            memset(video.charRam, 0, sizeof(video.charRam));
+            reset(true);
+        }
+        if (ImGui::MenuItem("Clear memory (0xA5) & reset Aquarius+", "")) {
+            memset(video.screenRam, 0xA5, sizeof(video.screenRam));
+            memset(video.colorRam, 0xA5, sizeof(video.colorRam));
+            memset(mainRam, 0xA5, sizeof(mainRam));
+            memset(video.videoRam, 0xA5, sizeof(video.videoRam));
+            memset(video.charRam, 0xA5, sizeof(video.charRam));
+            reset(true);
+        }
     }
 
     void dbgWindows() override {
