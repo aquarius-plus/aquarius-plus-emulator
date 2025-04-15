@@ -30,24 +30,18 @@ public:
     std::string sdCardPath;
     std::string asmListingPath;
 
-    int  wndPosX             = 0;
-    int  wndPosY             = 0;
-    int  wndWidth            = 0;
-    int  wndHeight           = 0;
-    bool enableSound         = true;
-    bool enableMouse         = true;
-    bool fontScale2x         = false;
-    bool enableDebugger      = false;
-    bool showMemEdit         = false;
-    bool showCpuState        = false;
-    bool showIoRegsWindow    = false;
-    bool showBreakpoints     = false;
-    bool showAssemblyListing = false;
-    bool showCpuTrace        = false;
-    bool showWatch           = false;
-    bool showEspInfo         = false;
-    bool stopOnHalt          = false;
-    int  memEditMemSelect    = 0;
+    int  wndPosX          = 0;
+    int  wndPosY          = 0;
+    int  wndWidth         = 0;
+    int  wndHeight        = 0;
+    bool enableSound      = true;
+    bool enableMouse      = true;
+    bool fontScale2x      = false;
+    bool enableDebugger   = false;
+    bool showMemEdit      = false;
+    bool showIoRegsWindow = false;
+    bool showEspInfo      = false;
+    int  memEditMemSelect = 0;
 
     DisplayScaling displayScaling = DisplayScaling::Linear;
 };

@@ -24,6 +24,7 @@
 #include <functional>
 #include <fstream>
 #include <map>
+#include <queue>
 
 #include <sys/types.h>
 #include <sys/stat.h>
