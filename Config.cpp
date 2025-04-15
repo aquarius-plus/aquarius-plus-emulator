@@ -57,9 +57,7 @@ void Config::load() {
 
         Keyboard::instance()->setKeyLayout((KeyLayout)getIntValue(root, "keyLayout", 0));
 
-        showMemEdit      = getBoolValue(root, "showMemEdit", false);
-        showIoRegsWindow = getBoolValue(root, "showIoRegsWindow", false);
-        showEspInfo      = getBoolValue(root, "showEspInfo", false);
+        showEspInfo = getBoolValue(root, "showEspInfo", false);
 
         // Read all NVS U8 items
         {
@@ -75,8 +73,6 @@ void Config::load() {
                 }
             }
         }
-
-        memEditMemSelect = getIntValue(root, "memEditMemSelect", 0);
 
         cJSON_free(root);
     }
@@ -107,11 +103,7 @@ void Config::save() {
 
     cJSON_AddNumberToObject(root, "keyLayout", (int)Keyboard::instance()->getKeyLayout());
 
-    cJSON_AddBoolToObject(root, "showMemEdit", showMemEdit);
-    cJSON_AddBoolToObject(root, "showIoRegsWindow", showIoRegsWindow);
     cJSON_AddBoolToObject(root, "showEspInfo", showEspInfo);
-
-    cJSON_AddNumberToObject(root, "memEditMemSelect", memEditMemSelect);
 
     // Store all NVS U8 items
     {

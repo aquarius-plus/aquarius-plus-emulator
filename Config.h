@@ -38,10 +38,7 @@ public:
     bool enableMouse      = true;
     bool fontScale2x      = false;
     bool enableDebugger   = false;
-    bool showMemEdit      = false;
-    bool showIoRegsWindow = false;
     bool showEspInfo      = false;
-    int  memEditMemSelect = 0;
 
     DisplayScaling displayScaling = DisplayScaling::Linear;
 };

@@ -43,6 +43,10 @@ public:
     std::string typeInStr;
 
     // Debugging
+    bool showMemEdit      = false;
+    int  memEditMemSelect = 0;
+    bool showIoRegsWindow = false;
+
     MemoryEditor memEdit;
 
     // IO space
@@ -89,10 +93,9 @@ public:
         z80Core.ioRead        = [this](uint16_t addr) { return ioRead(addr); };
         z80Core.ioWrite       = [this](uint16_t addr, uint8_t data) { ioWrite(addr, data); };
         z80Core.showInMemEdit = [this](uint16_t addr) {
-            auto config              = Config::instance();
-            config->showMemEdit      = true;
-            config->memEditMemSelect = 0;
-            memEdit.gotoAddr         = addr;
+            showMemEdit      = true;
+            memEditMemSelect = 0;
+            memEdit.gotoAddr = addr;
         };
 
         loadConfig();
@@ -105,13 +108,21 @@ public:
     }
 
     void loadConfig() {
-        auto root = Config::instance()->loadConfigFile("aqplus.json");
+        auto root        = Config::instance()->loadConfigFile("aqplus.json");
+        showMemEdit      = getBoolValue(root, "showMemEdit", false);
+        memEditMemSelect = getIntValue(root, "memEditMemSelect", 0);
+        showIoRegsWindow = getBoolValue(root, "showIoRegsWindow", false);
+
         z80Core.loadConfig(root);
         cJSON_Delete(root);
     }
 
     void saveConfig() {
         auto root = cJSON_CreateObject();
+        cJSON_AddBoolToObject(root, "showMemEdit", showMemEdit);
+        cJSON_AddNumberToObject(root, "memEditMemSelect", memEditMemSelect);
+        cJSON_AddBoolToObject(root, "showIoRegsWindow", showIoRegsWindow);
+
         z80Core.saveConfig(root);
         Config::instance()->saveConfigFile("aqplus.json", root);
     }
@@ -614,10 +625,8 @@ public:
         if (!enableDebugger)
             return;
 
-        auto config = Config::instance();
-
-        ImGui::MenuItem("Memory editor", "", &config->showMemEdit);
-        ImGui::MenuItem("IO Registers", "", &config->showIoRegsWindow);
+        ImGui::MenuItem("Memory editor", "", &showMemEdit);
+        ImGui::MenuItem("IO Registers", "", &showIoRegsWindow);
         z80Core.dbgMenu();
     }
 
@@ -627,11 +636,10 @@ public:
 
         z80Core.dbgWindows();
 
-        auto config = Config::instance();
-        if (config->showMemEdit)
-            dbgWndMemEdit(&config->showMemEdit);
-        if (config->showIoRegsWindow)
-            dbgWndIoRegs(&config->showIoRegsWindow);
+        if (showMemEdit)
+            dbgWndMemEdit(&showMemEdit);
+        if (showIoRegsWindow)
+            dbgWndIoRegs(&showIoRegsWindow);
     }
 
     void dbgWndIoRegs(bool *p_open) {
@@ -735,29 +743,28 @@ public:
             }
         }
 
-        auto config = Config::instance();
-        if (config->memEditMemSelect < 0 || config->memEditMemSelect > (int)memAreas.size()) {
+        if (memEditMemSelect < 0 || memEditMemSelect > (int)memAreas.size()) {
             // Invalid setting, reset to 0
-            config->memEditMemSelect = 0;
+            memEditMemSelect = 0;
         }
 
         MemoryEditor::Sizes s;
-        memEdit.calcSizes(s, memAreas[config->memEditMemSelect].size, 0);
+        memEdit.calcSizes(s, memAreas[memEditMemSelect].size, 0);
         ImGui::SetNextWindowSize(ImVec2(s.windowWidth, s.windowWidth * 0.60f), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSizeConstraints(ImVec2(s.windowWidth, 150.0f), ImVec2(s.windowWidth, FLT_MAX));
 
         if (ImGui::Begin("Memory editor", p_open, ImGuiWindowFlags_NoScrollbar)) {
-            if (ImGui::BeginCombo("Memory select", memAreas[config->memEditMemSelect].name.c_str(), ImGuiComboFlags_HeightLargest)) {
+            if (ImGui::BeginCombo("Memory select", memAreas[memEditMemSelect].name.c_str(), ImGuiComboFlags_HeightLargest)) {
                 for (int i = 0; i < (int)memAreas.size(); i++) {
-                    if (ImGui::Selectable(memAreas[i].name.c_str(), config->memEditMemSelect == i)) {
-                        config->memEditMemSelect = i;
+                    if (ImGui::Selectable(memAreas[i].name.c_str(), memEditMemSelect == i)) {
+                        memEditMemSelect = i;
                     }
                 }
                 ImGui::EndCombo();
             }
             ImGui::Separator();
 
-            if (config->memEditMemSelect == 0) {
+            if (memEditMemSelect == 0) {
                 memEdit.readFn = [this](const ImU8 *data, size_t off) {
                     return (ImU8)memRead((uint16_t)off);
                 };
@@ -768,9 +775,9 @@ public:
                 memEdit.readFn  = nullptr;
                 memEdit.writeFn = nullptr;
             }
-            memEdit.drawContents(memAreas[config->memEditMemSelect].data, memAreas[config->memEditMemSelect].size, 0);
+            memEdit.drawContents(memAreas[memEditMemSelect].data, memAreas[memEditMemSelect].size, 0);
             if (memEdit.contentsWidthChanged) {
-                memEdit.calcSizes(s, memAreas[config->memEditMemSelect].size, 0);
+                memEdit.calcSizes(s, memAreas[memEditMemSelect].size, 0);
                 ImGui::SetWindowSize(ImVec2(s.windowWidth, ImGui::GetWindowSize().y));
             }
         }
