@@ -34,6 +34,7 @@ public:
     }
     EmuMode getEmuMode() { return emuMode; }
     void    setEmuMode(EmuMode em) { emuMode = em; }
+    void    pendIrq() { Z80INT(&z80ctx, 0xFF); } // used by aqms core
 
     void dbgMenu();
     void dbgWindows();

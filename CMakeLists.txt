@@ -54,13 +54,14 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     
     fpga_cores/EmuState.cpp
     fpga_cores/Z80Core.cpp
+    fpga_cores/AssemblyListing.cpp
+    fpga_cores/AY8910.cpp
 
     fpga_cores/aqplus/AqpEmuState.cpp
     fpga_cores/aqplus/AqpVideo.cpp
-    fpga_cores/aqplus/AY8910.cpp
-    fpga_cores/aqplus/AssemblyListing.cpp
 
     fpga_cores/aqms/AqmsEmuState.cpp
+    fpga_cores/aqms/VDP.cpp
 
     esp32/main.cpp
     esp32/FPGA.cpp

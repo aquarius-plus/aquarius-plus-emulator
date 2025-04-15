@@ -82,11 +82,6 @@ public:
         coreVersionMinor = 0;
         memcpy(coreName, "Aquarius+       ", sizeof(coreName));
 
-        memset(keybMatrix, 0xFF, sizeof(keybMatrix));
-
-        for (unsigned i = 0; i < sizeof(mainRam); i++)
-            mainRam[i] = rand();
-
         z80Core.hasIrq        = [this] { return (irqStatus & irqMask) != 0; };
         z80Core.memRead       = [this](uint16_t addr) { return memRead(addr); };
         z80Core.memWrite      = [this](uint16_t addr, uint8_t data) { memWrite(addr, data); };
@@ -97,6 +92,10 @@ public:
             memEditMemSelect = 0;
             memEdit.gotoAddr = addr;
         };
+
+        memset(keybMatrix, 0xFF, sizeof(keybMatrix));
+        for (unsigned i = 0; i < sizeof(mainRam); i++)
+            mainRam[i] = rand();
 
         loadConfig();
 
