@@ -61,6 +61,10 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     fpga_cores/aqms/AqmsEmuState.cpp
     fpga_cores/aqms/VDP.cpp
 
+    fpga_cores/aq32/Aq32EmuState.cpp
+    fpga_cores/aq32/cpu/riscv.cpp
+    fpga_cores/aq32/cpu/riscv_util.cpp
+
     esp32/main.cpp
     esp32/FPGA.cpp
     esp32/Keyboard.cpp

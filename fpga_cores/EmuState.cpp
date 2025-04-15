@@ -29,6 +29,8 @@ void EmuState::loadCore(const std::string &_name) {
         curEmuState = newAqpEmuState();
     } else if (name == "aqms.core") {
         curEmuState = newAqmsEmuState();
+    } else if (name == "aq32.core") {
+        curEmuState = newAq32EmuState();
     }
 }
 
