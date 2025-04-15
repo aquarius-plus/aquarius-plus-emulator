@@ -1,11 +1,6 @@
 #pragma once
 
 #include "Common.h"
-#include "z80.h"
-#include "AqpVideo.h"
-#include "AY8910.h"
-#include <deque>
-#include "Config.h"
 
 #define ERF_RENDER_SCREEN    (1 << 0)
 #define ERF_NEW_AUDIO_SAMPLE (1 << 1)

@@ -1,8 +1,4 @@
 #include "EmuState.h"
-#include <stdlib.h>
-#include "UartProtocol.h"
-#include "Keyboard.h"
-#include "fpgarom.h"
 #include "FpgaCore.h"
 
 static std::shared_ptr<EmuState> curEmuState;

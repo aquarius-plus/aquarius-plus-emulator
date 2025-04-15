@@ -23,10 +23,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE SYSTEM
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     .
     lib
-
     fpga_cores
-    fpga_cores/aqplus
-    fpga_cores/aqms
 
     esp32
     esp32/FpgaCores

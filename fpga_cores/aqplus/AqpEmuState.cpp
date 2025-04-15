@@ -10,6 +10,7 @@
 #include "tinyfiledialogs.h"
 #include "DisplayOverlay/DisplayOverlay.h"
 #include "Z80Core.h"
+#include "AY8910.h"
 
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include "MemoryEditor.h"
