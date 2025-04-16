@@ -449,9 +449,8 @@ public:
                     audioBuf[aidx * 2 + 1] = (int16_t)(r * 32767.0f);
                 }
             }
-        }
 
-        if (emuMode != Z80Core::Em_Running) {
+        } else {
             z80Core.haltAfterRet  = -1;
             z80Core.tmpBreakpoint = -1;
             if (emuMode == Z80Core::Em_Step) {
@@ -480,7 +479,11 @@ public:
         int delta = 0;
         {
             int deltaDiv = forceTurbo ? 4 : (sysCtrlTurbo ? (sysCtrlTurboUnlimited ? 4 : 2) : 1);
-            for (int i = 0; i < deltaDiv; i++) delta += z80Core.cpuEmulate();
+            for (int i = 0; i < deltaDiv; i++) {
+                delta += z80Core.cpuEmulate();
+                if (z80Core.getEmuMode() != Z80Core::Em_Running)
+                    break;
+            }
             delta /= deltaDiv;
         }
 
