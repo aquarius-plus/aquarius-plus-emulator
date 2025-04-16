@@ -2,6 +2,15 @@
 #include "Common.h"
 #include "EmuState.h"
 
+#ifdef WIN32
+#include <intrin.h>
+static uint32_t __inline __builtin_clz(uint32_t x) {
+    unsigned long r = 0;
+    _BitScanReverse(&r, x);
+    return (31 - r);
+}
+#endif
+
 void riscv::emulate(int count) {
     while (count--) {
         this->trap     = TRAP_NONE;
