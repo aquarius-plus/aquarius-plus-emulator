@@ -117,8 +117,13 @@ public:
         // We decode CTRL-ESCAPE in this weird way to allow the sequence ESCAPE and then CTRL to be used on Windows.
         if (escapePressed && keyDown && (mod & KMOD_LCTRL)) {
             auto emuState = EmuState::get();
-            if (emuState)
-                emuState->reset(false);
+            if (emuState) {
+                if ((mod & KMOD_LSHIFT) != 0) {
+                    esp_restart();
+                } else {
+                    emuState->reset(false);
+                }
+            }
             return;
         }
 
