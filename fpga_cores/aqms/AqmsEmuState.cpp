@@ -15,25 +15,16 @@ public:
     Z80Core z80Core;
     VDP     vdp;
     SN76489 psg;
-
-    int      lineHalfCycles   = 0; // Half-cycles for this line
-    int      sampleHalfCycles = 0; // Half-cycles for this sample
-    unsigned audioLeft        = 0;
-    unsigned audioRight       = 0;
-    DCBlock  dcBlockLeft;
-    DCBlock  dcBlockRight;
-
+    DCBlock dcBlockLeft;
+    DCBlock dcBlockRight;
+    bool    startupMode = true;
     uint8_t cartRom[512 * 1024]; // Cartridge ROM
-    uint8_t cartRam[8 * 1024];
     uint8_t systemRam[8 * 1024]; // System RAM ($C000-$DFFF / $E000-$FFFF)
-
-    bool    startupMode   = true;
-    uint8_t romFrame2Page = 2; // $8000-$BFFF
-    uint8_t romFrame1Page = 1; // $4000-$7FFF
-    uint8_t romFrame0Page = 0; // $0400-$3FFF
+    uint8_t romFrame2Page = 2;   // $8000-$BFFF
+    uint8_t romFrame1Page = 1;   // $4000-$7FFF
+    uint8_t romFrame0Page = 0;   // $0400-$3FFF
     uint8_t regionBits    = 3;
-
-    uint8_t keybMatrix[8] = {0}; // Keyboard matrix (8 x 6bits)
+    uint8_t keybMatrix[8] = {0};
 
     AqmsEmuState() {
         coreType         = 1;
@@ -49,12 +40,20 @@ public:
         z80Core.ioWrite  = [this](uint16_t addr, uint8_t data) { ioWrite(addr, data); };
 
         memset(keybMatrix, 0xFF, sizeof(keybMatrix));
-
         loadConfig();
+        reset(true);
     }
 
     virtual ~AqmsEmuState() {
         saveConfig();
+    }
+
+    void reset(bool cold = false) override {
+        z80Core.reset();
+        vdp.reset();
+        psg.reset();
+        startupMode = true;
+        regionBits  = 3;
     }
 
     void loadConfig() {
@@ -77,12 +76,43 @@ public:
         Config::instance()->saveConfigFile("aqms.json", root);
     }
 
-    virtual void reset(bool cold = false) override {
-        z80Core.reset();
-        vdp.reset();
-        psg.reset();
-        startupMode = true;
-        regionBits  = 3;
+    void getVideoSize(int &w, int &h) override {
+        w = 640;
+        h = 480;
+    }
+
+    void getPixels(void *pixels, int pitch) override {
+        auto fb = vdp.getFramebuffer();
+
+        for (int j = 0; j < 480; j++) {
+            int y = (j - 48) / 2;
+
+            for (int i = 0; i < 640; i++) {
+                int x = (i - 64) / 2;
+
+                uint32_t col = 0;
+                if (y >= 0 && y < 192 && x >= 0 && x < 256)
+                    col = fb[y * 256 + x];
+
+                ((uint32_t *)((uintptr_t)pixels + j * pitch))[i] = col;
+            }
+        }
+        renderOverlay(pixels, pitch);
+    }
+
+    void spiTx(const void *data, size_t length) override {
+        EmuState::spiTx(data, length);
+        if (!spiSelected || txBuf.empty())
+            return;
+
+        switch (txBuf[0]) {
+            case CMD_SET_KEYB_MATRIX: {
+                if (txBuf.size() == 1 + 8) {
+                    memcpy(&keybMatrix, &txBuf[1], 8);
+                }
+                break;
+            }
+        }
     }
 
     uint8_t memRead(uint16_t addr) {
@@ -205,143 +235,56 @@ public:
         }
     }
 
-    virtual bool emulate(int16_t *audioBuf, unsigned numSamples) override {
+    void emulateFrame(int16_t *audioBuf, unsigned numSamples) override {
         z80Core.setEnableDebugger(enableDebugger);
 
-        bool result = false;
+        int lineHalfCycles   = 0; // Half-cycles for this line
+        int sampleHalfCycles = 0; // Half-cycles for this sample
+        vdp.line             = 0;
 
-        bool dbgUpdateScreen = false;
-        auto emuMode         = z80Core.getEmuMode();
-        if (emuMode == Z80Core::Em_Running) {
-            dbgUpdateScreen = true;
+        for (unsigned aidx = 0; aidx < numSamples; aidx++) {
+            int hcyclesPerSample = HCYCLES_PER_SAMPLE;
+            int hcyclesPerLine   = HCYCLES_PER_LINE;
 
-            // Render each audio sample
-            for (unsigned aidx = 0; aidx < numSamples; aidx++) {
-                while (emuMode == Z80Core::Em_Running) {
-                    auto flags = emulate2();
-                    emuMode    = z80Core.getEmuMode();
+            // Emulate for the duration of one audio sample
+            while (sampleHalfCycles < hcyclesPerSample) {
+                int halfCycles = z80Core.emulate() * 2;
+                lineHalfCycles += halfCycles;
+                sampleHalfCycles += halfCycles;
 
-                    if (flags & ERF_RENDER_SCREEN)
-                        result = true;
-                    if (flags & ERF_NEW_AUDIO_SAMPLE)
-                        break;
-                }
-                if (emuMode != Z80Core::Em_Running)
-                    break;
-
-                if (audioBuf != nullptr) {
-                    float l = audioLeft / 65535.0f;
-                    float r = audioRight / 65535.0f;
-                    l       = dcBlockLeft.filter(l);
-                    r       = dcBlockRight.filter(r);
-                    l       = std::min(std::max(l, -1.0f), 1.0f);
-                    r       = std::min(std::max(r, -1.0f), 1.0f);
-
-                    audioBuf[aidx * 2 + 0] = (int16_t)(l * 32767.0f);
-                    audioBuf[aidx * 2 + 1] = (int16_t)(r * 32767.0f);
+                // Render video line
+                if (lineHalfCycles >= hcyclesPerLine) {
+                    lineHalfCycles -= hcyclesPerLine;
+                    vdp.renderLine();
                 }
             }
-        }
+            sampleHalfCycles -= hcyclesPerSample;
 
-        if (emuMode != Z80Core::Em_Running) {
-            z80Core.haltAfterRet  = -1;
-            z80Core.tmpBreakpoint = -1;
-            if (emuMode == Z80Core::Em_Step) {
-                dbgUpdateScreen = true;
-                z80Core.setEmuMode(Z80Core::Em_Halted);
-                emulate2();
-                emuMode = z80Core.getEmuMode();
-            }
+            // Render audio
+            if (audioBuf != nullptr) {
+                unsigned audioLeft  = 0;
+                unsigned audioRight = 0;
 
-            // if (dbgUpdateScreen) {
-            //     dbgUpdateScreen = false;
-
-            //     // Update screen
-            //     for (int i = 0; i < 240; i++)
-            //         video.drawLine(i);
-
-            //     result = true;
-            // }
-        }
-        return result;
-    }
-
-    unsigned emulate2() {
-        unsigned resultFlags = 0;
-
-        int delta = z80Core.cpuEmulate();
-
-        lineHalfCycles += delta;
-        sampleHalfCycles += delta;
-
-        if (lineHalfCycles >= HCYCLES_PER_LINE) {
-            lineHalfCycles -= HCYCLES_PER_LINE;
-
-            if (vdp.renderLine()) {
-                resultFlags |= ERF_RENDER_SCREEN;
-            }
-        }
-
-        // Render audio?
-        if (sampleHalfCycles >= HCYCLES_PER_SAMPLE) {
-            sampleHalfCycles -= HCYCLES_PER_SAMPLE;
-
-            audioLeft  = 0;
-            audioRight = 0;
-            for (int i = 0; i < 5; i++) {
-                uint16_t val = psg.render() * 3;
-                audioLeft += val;
-                audioRight += val;
-            }
-            resultFlags |= ERF_NEW_AUDIO_SAMPLE;
-        }
-
-        if (delta)
-            z80Core.lastBpAddress = -1;
-
-        return resultFlags;
-    }
-
-    virtual void getVideoSize(int &w, int &h) override {
-        w = 640;
-        h = 480;
-    }
-
-    virtual void getPixels(void *pixels, int pitch) override {
-        auto fb = vdp.getFramebuffer();
-
-        for (int j = 0; j < 480; j++) {
-            int y = (j - 48) / 2;
-
-            for (int i = 0; i < 640; i++) {
-                int x = (i - 64) / 2;
-
-                uint32_t col = 0;
-                if (y >= 0 && y < 192 && x >= 0 && x < 256)
-                    col = fb[y * 256 + x];
-
-                ((uint32_t *)((uintptr_t)pixels + j * pitch))[i] = col;
-            }
-        }
-        renderOverlay(pixels, pitch);
-    }
-
-    virtual void spiTx(const void *data, size_t length) override {
-        EmuState::spiTx(data, length);
-        if (!spiSelected || txBuf.empty())
-            return;
-
-        switch (txBuf[0]) {
-            case CMD_SET_KEYB_MATRIX: {
-                if (txBuf.size() == 1 + 8) {
-                    memcpy(&keybMatrix, &txBuf[1], 8);
+                for (int i = 0; i < 5; i++) {
+                    uint16_t val = psg.render() * 3;
+                    audioLeft += val;
+                    audioRight += val;
                 }
-                break;
+
+                float l = audioLeft / 65535.0f;
+                float r = audioRight / 65535.0f;
+                l       = dcBlockLeft.filter(l);
+                r       = dcBlockRight.filter(r);
+                l       = std::min(std::max(l, -1.0f), 1.0f);
+                r       = std::min(std::max(r, -1.0f), 1.0f);
+
+                audioBuf[aidx * 2 + 0] = (int16_t)(l * 32767.0f);
+                audioBuf[aidx * 2 + 1] = (int16_t)(r * 32767.0f);
             }
         }
     }
 
-    virtual void dbgMenu() override {
+    void dbgMenu() override {
         if (!enableDebugger)
             return;
 
@@ -350,7 +293,7 @@ public:
         z80Core.dbgMenu();
     }
 
-    virtual void dbgWindows() override {
+    void dbgWindows() override {
         if (!enableDebugger)
             return;
 

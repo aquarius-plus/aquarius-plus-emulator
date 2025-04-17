@@ -31,13 +31,14 @@
 #define REG_VSCRY         0xFF500010
 #define REG_VLINE         0xFF500014
 #define REG_VIRQLINE      0xFF500018
+#define REG_KEYBUF        0xFF50001C
 #define BOOTROM_START     0xFFFFF800
 
 class Aq32EmuState : public EmuState {
 public:
     riscv               cpu;
     Aq32Video           video;
-    uint8_t             keybMatrix[8] = {0}; // Keyboard matrix (8 x 6bits)
+    uint8_t             keybMatrix[8] = {0};
     std::deque<uint8_t> kbBuf;
     const unsigned      kbBufSize  = 16;
     unsigned            audioLeft  = 0;
@@ -45,7 +46,7 @@ public:
     DCBlock             dcBlockLeft;
     DCBlock             dcBlockRight;
     std::string         typeInStr;
-    uint32_t            mainRam[512 * 1024 / 4]; // Main RAM
+    uint32_t            mainRam[512 * 1024 / 4];
     uint32_t            bootRom[0x800 / 4];
 
     bool showIoRegsWindow = false;
@@ -187,6 +188,13 @@ public:
             return video.videoLine;
         } else if (addr == REG_VIRQLINE) {
             return video.videoIrqLine;
+        } else if (addr == REG_KEYBUF) {
+            uint8_t result = 0;
+            if (!kbBuf.empty()) {
+                result = kbBuf.front();
+                kbBuf.pop_front();
+            }
+            return result;
         } else if (addr >= BOOTROM_START) {
             return bootRom[(addr & 0x7FF) / 4];
         }
@@ -230,17 +238,19 @@ public:
             video.videoScrY = val & 0xFF;
         } else if (addr == REG_VLINE) {
         } else if (addr == REG_VIRQLINE) {
+            video.videoIrqLine = val & 0xFF;
+        } else if (addr == REG_KEYBUF) {
+            kbBuf.clear();
         }
     }
 
-    bool emulate(int16_t *audioBuf, unsigned numSamples) override {
+    void emulateFrame(int16_t *audioBuf, unsigned numSamples) override {
         for (int line = 0; line < 262; line++) {
             video.videoLine = line;
             cpu.emulate(8000000 / 60 / 262);
             video.drawLine(line);
             keyboardTypeIn();
         }
-        return true;
     }
 
     void keyboardTypeIn() {

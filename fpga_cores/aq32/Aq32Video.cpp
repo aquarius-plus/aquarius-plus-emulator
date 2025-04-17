@@ -68,8 +68,8 @@ void Aq32Video::drawLine(int line) {
     uint8_t lineGfx[512];
     if (vActive) {
         int bmline = line - 16;
-        switch (videoCtrl & VCTRL_MODE_MASK) {
-            case VCTRL_MODE_BITMAP: {
+        switch (videoCtrl & VCTRL_GFXMODE_MASK) {
+            case VCTRL_GFXMODE_BITMAP: {
                 // Bitmap mode 1bpp
                 for (int i = 0; i < 320; i++) {
                     int     row    = bmline / 8;
@@ -83,7 +83,7 @@ void Aq32Video::drawLine(int line) {
                 break;
             }
 
-            case VCTRL_MODE_BITMAP_4BPP: {
+            case VCTRL_GFXMODE_BITMAP_4BPP: {
                 // Bitmap mode 4bpp
                 for (int i = 0; i < 80; i++) {
                     uint8_t col = videoRam[bmline * 80 + i];
@@ -96,7 +96,7 @@ void Aq32Video::drawLine(int line) {
                 break;
             }
 
-            case VCTRL_MODE_TILEMAP: {
+            case VCTRL_GFXMODE_TILEMAP: {
                 // Tile mode
                 unsigned idx      = (-(videoScrX & 7)) & 511;
                 unsigned tileLine = (bmline + videoScrY) & 255;
@@ -270,7 +270,7 @@ void Aq32Video::dbgDrawIoRegs() {
 
     ImGui::Text("VCTRL   : 0x%02X", videoCtrl);
     ImGui::Text("  TEXT_ENABLE       : %u", videoCtrl & 1);
-    ImGui::Text("  MODE              : %u (%s)", (videoCtrl >> 1) & 3, gfxMode[(videoCtrl >> 1) & 3]);
+    ImGui::Text("  GFXMODE           : %u (%s)", (videoCtrl >> 1) & 3, gfxMode[(videoCtrl >> 1) & 3]);
     ImGui::Text("  SPRITES_ENABLE    : %u", (videoCtrl >> 3) & 1);
     ImGui::Text("  TEXT_PRIORITY     : %u", (videoCtrl >> 4) & 1);
     ImGui::Text("  REMAP_BORDER_CHAR : %u", (videoCtrl >> 5) & 1);

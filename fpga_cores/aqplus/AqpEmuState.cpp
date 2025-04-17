@@ -28,21 +28,17 @@
 class AqpEmuState : public EmuState {
 public:
     Z80Core             z80Core;
-    AqpVideo            video;                  // Video
-    int                 lineHalfCycles   = 0;   // Half-cycles for this line
-    int                 sampleHalfCycles = 0;   // Half-cycles for this sample
-    uint8_t             keybMatrix[8]    = {0}; // Keyboard matrix (8 x 6bits)
+    AqpVideo            video;
+    uint8_t             keybMatrix[8] = {0};
     std::deque<uint8_t> kbBuf;
     const unsigned      kbBufSize         = 16;
     bool                cartridgeInserted = false;
     uint8_t             videoMode         = 0;
-    unsigned            audioLeft         = 0;
-    unsigned            audioRight        = 0;
     DCBlock             dcBlockLeft;
     DCBlock             dcBlockRight;
     std::string         typeInStr;
-    uint8_t             mainRam[512 * 1024]; // Main RAM
-    uint8_t             cartRom[16 * 1024];  // Cartridge ROM
+    uint8_t             mainRam[512 * 1024];
+    uint8_t             cartRom[16 * 1024];
 
     // Debugging
     bool showMemEdit      = false;
@@ -90,7 +86,6 @@ public:
             mainRam[i] = rand();
 
         loadConfig();
-
         reset(true);
     }
 
@@ -411,135 +406,71 @@ public:
         }
     }
 
-    bool emulate(int16_t *audioBuf, unsigned numSamples) override {
+    void emulateFrame(int16_t *audioBuf, unsigned numSamples) override {
         z80Core.setEnableDebugger(enableDebugger);
 
-        bool result = false;
+        int lineHalfCycles   = 0; // Half-cycles for this line
+        int sampleHalfCycles = 0; // Half-cycles for this sample
+        video.videoLine      = 0;
 
-        bool dbgUpdateScreen = false;
-        auto emuMode         = z80Core.getEmuMode();
-        if (emuMode == Z80Core::Em_Running) {
-            dbgUpdateScreen = true;
+        for (unsigned aidx = 0; aidx < numSamples; aidx++) {
+            int speedMultiplier  = forceTurbo ? 4 : (sysCtrlTurbo ? (sysCtrlTurboUnlimited ? 4 : 2) : 1);
+            int hcyclesPerSample = HCYCLES_PER_SAMPLE * speedMultiplier;
+            int hcyclesPerLine   = HCYCLES_PER_LINE * speedMultiplier;
 
-            // Render each audio sample
-            for (unsigned aidx = 0; aidx < numSamples; aidx++) {
-                while (emuMode == Z80Core::Em_Running) {
-                    auto flags = emulate2();
-                    emuMode    = z80Core.getEmuMode();
+            // Emulate for the duration of one audio sample
+            while (sampleHalfCycles < hcyclesPerSample) {
+                int halfCycles = z80Core.emulate() * 2;
+                lineHalfCycles += halfCycles;
+                sampleHalfCycles += halfCycles;
 
-                    if (flags & ERF_RENDER_SCREEN)
-                        result = true;
-                    if (flags & ERF_NEW_AUDIO_SAMPLE)
-                        break;
-                }
-                if (emuMode != Z80Core::Em_Running)
-                    break;
-
-                if (audioBuf != nullptr) {
-                    float l = audioLeft / 65535.0f;
-                    float r = audioRight / 65535.0f;
-                    l       = dcBlockLeft.filter(l);
-                    r       = dcBlockRight.filter(r);
-                    l       = std::min(std::max(l, -1.0f), 1.0f);
-                    r       = std::min(std::max(r, -1.0f), 1.0f);
-
-                    audioBuf[aidx * 2 + 0] = (int16_t)(l * 32767.0f);
-                    audioBuf[aidx * 2 + 1] = (int16_t)(r * 32767.0f);
+                // Render video line
+                if (lineHalfCycles >= hcyclesPerLine) {
+                    lineHalfCycles -= hcyclesPerLine;
+                    video.drawLine(video.videoLine++);
+                    irqStatus |= video.isOnVideoIrqLine() ? (1 << 1) : 0;
+                    irqStatus |= video.isOnStartOfVBlank() ? (1 << 0) : 0;
                 }
             }
+            sampleHalfCycles -= hcyclesPerSample;
 
-        } else {
-            z80Core.haltAfterRet  = -1;
-            z80Core.tmpBreakpoint = -1;
-            if (emuMode == Z80Core::Em_Step) {
-                dbgUpdateScreen = true;
-                z80Core.setEmuMode(Z80Core::Em_Halted);
-                emulate2();
-                emuMode = z80Core.getEmuMode();
+            // Render audio
+            if (audioBuf != nullptr) {
+                // Take average of 5 AY8910 samples to match sampling rate (16*5*44100 = 3.528MHz)
+                unsigned audioLeft  = 0;
+                unsigned audioRight = 0;
+
+                for (int i = 0; i < 5; i++) {
+                    uint16_t abc[3];
+                    ay1.render(abc);
+                    audioLeft += 2 * abc[0] + 2 * abc[1] + 1 * abc[2];
+                    audioRight += 1 * abc[0] + 2 * abc[1] + 2 * abc[2];
+
+                    ay2.render(abc);
+                    audioLeft += 2 * abc[0] + 2 * abc[1] + 1 * abc[2];
+                    audioRight += 1 * abc[0] + 2 * abc[1] + 2 * abc[2];
+
+                    audioLeft += (audioDAC << 4);
+                    audioRight += (audioDAC << 4);
+                }
+
+                uint16_t beep = soundOutput ? 10000 : 0;
+                audioLeft += beep;
+                audioRight += beep;
+
+                float l = audioLeft / 65535.0f;
+                float r = audioRight / 65535.0f;
+                l       = dcBlockLeft.filter(l);
+                r       = dcBlockRight.filter(r);
+                l       = std::min(std::max(l, -1.0f), 1.0f);
+                r       = std::min(std::max(r, -1.0f), 1.0f);
+
+                audioBuf[aidx * 2 + 0] = (int16_t)(l * 32767.0f);
+                audioBuf[aidx * 2 + 1] = (int16_t)(r * 32767.0f);
             }
 
-            if (dbgUpdateScreen) {
-                dbgUpdateScreen = false;
-
-                // Update screen
-                for (int i = 0; i < 240; i++)
-                    video.drawLine(i);
-
-                result = true;
-            }
+            keyboardTypeIn();
         }
-        return result;
-    }
-
-    unsigned emulate2() {
-        unsigned resultFlags = 0;
-
-        int delta = 0;
-        {
-            int deltaDiv = forceTurbo ? 4 : (sysCtrlTurbo ? (sysCtrlTurboUnlimited ? 4 : 2) : 1);
-            for (int i = 0; i < deltaDiv; i++) {
-                delta += z80Core.cpuEmulate();
-                if (z80Core.getEmuMode() != Z80Core::Em_Running)
-                    break;
-            }
-            delta /= deltaDiv;
-        }
-
-        int prevLineHalfCycles = lineHalfCycles;
-        lineHalfCycles += delta;
-        sampleHalfCycles += delta;
-
-        // Handle VIRQLINE register
-        if (prevLineHalfCycles < 320 && lineHalfCycles >= 320 && video.isOnVideoIrqLine()) {
-            irqStatus |= (1 << 1);
-        }
-
-        if (lineHalfCycles >= HCYCLES_PER_LINE) {
-            lineHalfCycles -= HCYCLES_PER_LINE;
-
-            video.drawLine(video.getLine());
-
-            if (video.nextLine()) {
-                resultFlags |= ERF_RENDER_SCREEN;
-            } else if (video.isOnStartOfVBlank()) {
-                irqStatus |= (1 << 0);
-            }
-        }
-        keyboardTypeIn();
-
-        // Render audio?
-        if (sampleHalfCycles >= HCYCLES_PER_SAMPLE) {
-            sampleHalfCycles -= HCYCLES_PER_SAMPLE;
-
-            // Take average of 5 AY8910 samples to match sampling rate (16*5*44100 = 3.528MHz)
-            audioLeft  = 0;
-            audioRight = 0;
-
-            for (int i = 0; i < 5; i++) {
-                uint16_t abc[3];
-                ay1.render(abc);
-                audioLeft += 2 * abc[0] + 2 * abc[1] + 1 * abc[2];
-                audioRight += 1 * abc[0] + 2 * abc[1] + 2 * abc[2];
-
-                ay2.render(abc);
-                audioLeft += 2 * abc[0] + 2 * abc[1] + 1 * abc[2];
-                audioRight += 1 * abc[0] + 2 * abc[1] + 2 * abc[2];
-
-                audioLeft += (audioDAC << 4);
-                audioRight += (audioDAC << 4);
-            }
-
-            uint16_t beep = soundOutput ? 10000 : 0;
-
-            audioLeft  = audioLeft + beep;
-            audioRight = audioRight + beep;
-            resultFlags |= ERF_NEW_AUDIO_SAMPLE;
-        }
-
-        if (delta)
-            z80Core.lastBpAddress = -1;
-
-        return resultFlags;
     }
 
     bool loadCartridgeROM(const std::string &path) {

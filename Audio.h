@@ -5,8 +5,8 @@
 #include <mutex>
 #include "DCBlock.h"
 
-#define SAMPLES_PER_BUFFER (735)
 #define SAMPLERATE         (44100)
+#define SAMPLES_PER_BUFFER (SAMPLERATE / 60)
 #define NUM_AUDIO_BUFS     (8)
 
 class Audio {

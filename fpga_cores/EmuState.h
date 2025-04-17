@@ -10,10 +10,10 @@ public:
     static std::shared_ptr<EmuState> get();
     static void                      loadCore(const std::string &name);
 
-    virtual void reset(bool cold = false)                        = 0;
-    virtual bool emulate(int16_t *audioBuf, unsigned numSamples) = 0;
-    virtual void getVideoSize(int &w, int &h)                    = 0;
-    virtual void getPixels(void *pixels, int pitch)              = 0;
+    virtual void reset(bool cold = false)                             = 0;
+    virtual void emulateFrame(int16_t *audioBuf, unsigned numSamples) = 0;
+    virtual void getVideoSize(int &w, int &h)                         = 0;
+    virtual void getPixels(void *pixels, int pitch)                   = 0;
 
     virtual void spiSel(bool enable);
     virtual void spiTx(const void *data, size_t length);

@@ -6,12 +6,6 @@
 
 class Z80Core {
 public:
-    enum EmuMode {
-        Em_Halted,
-        Em_Step,
-        Em_Running,
-    };
-
     Z80Core();
 
     std::function<bool()>                            hasIrq;
@@ -23,7 +17,7 @@ public:
 
     void loadConfig(cJSON *root);
     void saveConfig(cJSON *root);
-    int  cpuEmulate();
+    int  emulate();
     void reset();
     void setEnableDebugger(bool en) {
         enableDebugger = en;
@@ -32,9 +26,7 @@ public:
             emuMode = Em_Running;
         }
     }
-    EmuMode getEmuMode() { return emuMode; }
-    void    setEmuMode(EmuMode em) { emuMode = em; }
-    void    pendIrq() { Z80INT(&z80ctx, 0xFF); } // used by aqms core
+    void pendIrq() { Z80INT(&z80ctx, 0xFF); } // used by aqms core
 
     void dbgMenu();
     void dbgWindows();
@@ -58,6 +50,11 @@ private:
     void    z80IoWrite(uint16_t addr, uint8_t data, bool triggerBp);
 
     // Current mode
+    enum EmuMode {
+        Em_Halted,
+        Em_Step,
+        Em_Running,
+    };
     EmuMode emuMode = Em_Running;
 
     bool enableDebugger = false;

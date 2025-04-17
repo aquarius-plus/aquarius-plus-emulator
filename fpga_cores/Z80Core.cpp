@@ -98,8 +98,16 @@ void Z80Core::saveConfig(cJSON *root) {
     }
 }
 
-int Z80Core::cpuEmulate() {
-    bool haltAfterThis = false;
+int Z80Core::emulate() {
+    if (!enableDebugger) {
+        emuMode       = Em_Running;
+        tmpBreakpoint = -1;
+    }
+    if (emuMode == Em_Halted) {
+        haltAfterRet  = -1;
+        tmpBreakpoint = -1;
+        return 1;
+    }
 
     if (enableDebugger) {
         if (tmpBreakpoint == z80ctx.PC) {
@@ -124,18 +132,14 @@ int Z80Core::cpuEmulate() {
             uint8_t opcode = memRead(z80ctx.PC);
             if (opcode == 0xCD ||          // CALL nn
                 (opcode & 0xC7) == 0xC4) { // CALL c,nn
-
                 haltAfterRet++;
 
             } else if (
                 opcode == 0xC9 ||          // RET
                 (opcode & 0xC7) == 0xC7) { // RET cc
-
-                haltAfterRet--;
-
-                if (haltAfterRet < 0) {
-                    haltAfterThis = true;
-                    haltAfterRet  = -1;
+                if (--haltAfterRet < 0) {
+                    haltAfterRet = -1;
+                    emuMode      = Em_Step;
                 }
             }
         }
@@ -147,12 +151,17 @@ int Z80Core::cpuEmulate() {
         Z80INT(&z80ctx, 0xFF);
     }
 
+    // Emulate 1 instruction
     z80ctx.tstates = 0;
     Z80Execute(&z80ctx);
-    int delta = z80ctx.tstates * 2;
+    int delta = z80ctx.tstates;
+
+    if (emuMode == Em_Step) {
+        emuMode = Em_Halted;
+    }
 
     if (enableDebugger) {
-        if (traceEnable && (!z80ctx.halted || !prevHalted)) {
+        if (traceEnable) {
             cpuTrace.emplace_back();
             auto &entry = cpuTrace.back();
             entry.pc    = z80ctx.PC;
@@ -161,15 +170,9 @@ int Z80Core::cpuEmulate() {
 
             z80ctx.tstates = 0;
             Z80Debug(&z80ctx, entry.bytes, entry.instrStr);
-
             while ((int)cpuTrace.size() > traceDepth) {
                 cpuTrace.pop_front();
             }
-        }
-        prevHalted = z80ctx.halted;
-
-        if (haltAfterThis || (z80ctx.halted && stopOnHalt)) {
-            emuMode = Em_Halted;
         }
     }
     return delta;
@@ -289,7 +292,7 @@ void Z80Core::dbgWndCpuState(bool *p_open) {
 
         ImGui::SetNextItemShortcut(ImGuiKey_F10, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Tooltip);
         if (ImGui::Button("Step Over")) {
-            int tmpBreakpoint = -1;
+            tmpBreakpoint = -1;
 
             if (z80ctx.halted) {
                 // Step over HALT instruction

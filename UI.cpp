@@ -253,7 +253,6 @@ public:
                     }
                 }
 
-                bool updateScreen = false;
                 for (int i = 0; i < bufsToRender; i++) {
                     auto abuf = Audio::instance()->getBuffer();
                     assert(abuf != nullptr);
@@ -272,12 +271,14 @@ public:
                             enableSound = false;
 
                         for (int i = 0; i < emuSpeed; i++)
-                            updateScreen |= emuState->emulate(enableSound ? abuf : nullptr, SAMPLES_PER_BUFFER);
+                            emuState->emulateFrame(enableSound ? abuf : nullptr, SAMPLES_PER_BUFFER);
                     }
 
                     Audio::instance()->putBuffer(abuf);
                 }
-                if (updateScreen) {
+
+                // Update screen
+                {
                     int w, h;
                     emuState->getVideoSize(w, h);
                     if (w != textureWidth || h != textureHeight) {
