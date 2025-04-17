@@ -27,21 +27,22 @@
 
 class AqpEmuState : public EmuState {
 public:
-    Z80Core z80Core;
-
-    AqpVideo video;                   // Video
-    int      lineHalfCycles    = 0;   // Half-cycles for this line
-    int      sampleHalfCycles  = 0;   // Half-cycles for this sample
-    uint8_t  keybMatrix[8]     = {0}; // Keyboard matrix (8 x 6bits)
-    bool     cartridgeInserted = false;
-    uint8_t  videoMode         = 0;
-    unsigned audioLeft         = 0;
-    unsigned audioRight        = 0;
-    DCBlock  dcBlockLeft;
-    DCBlock  dcBlockRight;
-
-    // Virtual typing from command-line argument
-    std::string typeInStr;
+    Z80Core             z80Core;
+    AqpVideo            video;                  // Video
+    int                 lineHalfCycles   = 0;   // Half-cycles for this line
+    int                 sampleHalfCycles = 0;   // Half-cycles for this sample
+    uint8_t             keybMatrix[8]    = {0}; // Keyboard matrix (8 x 6bits)
+    std::deque<uint8_t> kbBuf;
+    const unsigned      kbBufSize         = 16;
+    bool                cartridgeInserted = false;
+    uint8_t             videoMode         = 0;
+    unsigned            audioLeft         = 0;
+    unsigned            audioRight        = 0;
+    DCBlock             dcBlockLeft;
+    DCBlock             dcBlockRight;
+    std::string         typeInStr;
+    uint8_t             mainRam[512 * 1024]; // Main RAM
+    uint8_t             cartRom[16 * 1024];  // Cartridge ROM
 
     // Debugging
     bool showMemEdit      = false;
@@ -65,16 +66,6 @@ public:
     bool    soundOutput           = false; // $FC<1>: Cassette/Sound output
     bool    cpmRemap              = false; // $FD<1>: Remap memory for CP/M
     bool    forceTurbo            = false;
-
-    // Keyboard buffer
-    uint8_t kbBuf[16];
-    uint8_t kbBufWrIdx = 0;
-    uint8_t kbBufRdIdx = 0;
-    uint8_t kbBufCnt   = 0;
-
-    // External memory
-    uint8_t mainRam[512 * 1024]; // Main RAM
-    uint8_t cartRom[16 * 1024];  // Cartridge ROM
 
     AqpEmuState() {
         coreType         = 1;
@@ -107,26 +98,6 @@ public:
         saveConfig();
     }
 
-    void loadConfig() {
-        auto root        = Config::instance()->loadConfigFile("aqplus.json");
-        showMemEdit      = getBoolValue(root, "showMemEdit", false);
-        memEditMemSelect = getIntValue(root, "memEditMemSelect", 0);
-        showIoRegsWindow = getBoolValue(root, "showIoRegsWindow", false);
-
-        z80Core.loadConfig(root);
-        cJSON_Delete(root);
-    }
-
-    void saveConfig() {
-        auto root = cJSON_CreateObject();
-        cJSON_AddBoolToObject(root, "showMemEdit", showMemEdit);
-        cJSON_AddNumberToObject(root, "memEditMemSelect", memEditMemSelect);
-        cJSON_AddBoolToObject(root, "showIoRegsWindow", showIoRegsWindow);
-
-        z80Core.saveConfig(root);
-        Config::instance()->saveConfigFile("aqplus.json", root);
-    }
-
     void reset(bool cold) override {
         // Reset registers
         audioDAC              = 0;
@@ -147,7 +118,27 @@ public:
         z80Core.reset();
         ay1.reset();
         ay2.reset();
-        kbBufReset();
+        kbBuf.clear();
+    }
+
+    void loadConfig() {
+        auto root        = Config::instance()->loadConfigFile("aqplus.json");
+        showMemEdit      = getBoolValue(root, "showMemEdit", false);
+        memEditMemSelect = getIntValue(root, "memEditMemSelect", 0);
+        showIoRegsWindow = getBoolValue(root, "showIoRegsWindow", false);
+
+        z80Core.loadConfig(root);
+        cJSON_Delete(root);
+    }
+
+    void saveConfig() {
+        auto root = cJSON_CreateObject();
+        cJSON_AddBoolToObject(root, "showMemEdit", showMemEdit);
+        cJSON_AddNumberToObject(root, "memEditMemSelect", memEditMemSelect);
+        cJSON_AddBoolToObject(root, "showIoRegsWindow", showIoRegsWindow);
+
+        z80Core.saveConfig(root);
+        Config::instance()->saveConfigFile("aqplus.json", root);
     }
 
     void getVideoSize(int &w, int &h) override {
@@ -207,8 +198,8 @@ public:
             }
 
             case CMD_WRITE_KBBUF: {
-                if (txBuf.size() == 1 + 1) {
-                    kbBufWrite(txBuf[1]);
+                if (txBuf.size() == 1 + 1 && kbBuf.size() < kbBufSize) {
+                    kbBuf.push_back(txBuf[1]);
                 }
                 break;
             }
@@ -329,7 +320,14 @@ public:
                     return ay2.read();
                 return 0xFF;
 
-            case 0xFA: return kbBufRead();
+            case 0xFA: {
+                uint8_t result = 0;
+                if (!kbBuf.empty()) {
+                    result = kbBuf.front();
+                    kbBuf.pop_front();
+                }
+                return result;
+            }
             case 0xFB: return (
                 (sysCtrlWarmBoot ? (1 << 7) : 0) |
                 (sysCtrlTurboUnlimited ? (1 << 3) : 0) |
@@ -379,7 +377,7 @@ public:
                 case 0xF3: bankRegs[3] = data; return;
                 case 0xF4: UartProtocol::instance()->writeCtrl(data); return;
                 case 0xF5: UartProtocol::instance()->writeData(data); return;
-                case 0xFA: kbBufReset(); return;
+                case 0xFA: kbBuf.clear(); return;
             }
         }
 
@@ -574,37 +572,11 @@ public:
     }
 
     void keyboardTypeIn() {
-        if (kbBufCnt < 16 && !typeInStr.empty()) {
+        if (kbBuf.size() < kbBufSize && !typeInStr.empty()) {
             char ch = typeInStr.front();
             typeInStr.erase(typeInStr.begin());
             Keyboard::instance()->pressKey(ch);
         }
-    }
-
-    void kbBufReset() {
-        kbBufCnt   = 0;
-        kbBufRdIdx = 0;
-        kbBufWrIdx = 0;
-    }
-
-    void kbBufWrite(uint8_t val) {
-        if (kbBufCnt < sizeof(kbBuf)) {
-            kbBufCnt++;
-            kbBuf[kbBufWrIdx++] = val;
-            if (kbBufWrIdx == sizeof(kbBuf))
-                kbBufWrIdx = 0;
-        }
-    }
-
-    uint8_t kbBufRead() {
-        uint8_t result = 0;
-        if (kbBufCnt > 0) {
-            result = kbBuf[kbBufRdIdx++];
-            if (kbBufRdIdx == sizeof(kbBuf))
-                kbBufRdIdx = 0;
-            kbBufCnt--;
-        }
-        return result;
     }
 
     void fileMenu() override {
@@ -683,7 +655,7 @@ public:
                 auto keyMode = Keyboard::instance()->getKeyMode();
 
                 {
-                    uint8_t val = kbBufCnt == 0 ? 0 : kbBuf[kbBufRdIdx];
+                    uint8_t val = kbBuf.empty() ? 0 : kbBuf.front();
                     ImGui::Text("$FA KEYBUF: $%02X (%c)", val, val > 32 && val < 127 ? val : '.');
                 }
                 ImGui::Text(
@@ -695,17 +667,13 @@ public:
 
                 std::string str = "Key buffer: ";
 
-                int rdIdx = kbBufRdIdx;
-                for (int i = 0; i < kbBufCnt; i++) {
+                for (unsigned i = 0; i < kbBuf.size(); i++) {
                     if (keyMode & 2) {
-                        uint8_t val = kbBuf[rdIdx];
+                        uint8_t val = kbBuf[i];
                         str += fmtstr("%c", val > 32 && val < 127 ? val : '.');
                     } else {
-                        str += fmtstr("%02X ", kbBuf[rdIdx]);
+                        str += fmtstr("%02X ", kbBuf[i]);
                     }
-                    rdIdx++;
-                    if (rdIdx == sizeof(kbBuf))
-                        rdIdx = 0;
                 }
                 ImGui::Text("%s", str.c_str());
             }

@@ -320,7 +320,16 @@ void AqpVideo::drawLine(int line) {
 }
 
 void AqpVideo::dbgDrawIoRegs() {
+    static const char *gfxMode[] = {"OFF", "TILEMAP", "BITMAP", "BITMAP_4BPP"};
+
     ImGui::Text("$E0     VCTRL   : $%02X", videoCtrl);
+    ImGui::Text("  TEXT_ENABLE       : %u", videoCtrl & 1);
+    ImGui::Text("  MODE              : %u (%s)", (videoCtrl >> 1) & 3, gfxMode[(videoCtrl >> 1) & 3]);
+    ImGui::Text("  SPRITES_ENABLE    : %u", (videoCtrl >> 3) & 1);
+    ImGui::Text("  TEXT_PRIORITY     : %u", (videoCtrl >> 4) & 1);
+    ImGui::Text("  REMAP_BORDER_CHAR : %u", (videoCtrl >> 5) & 1);
+    ImGui::Text("  80_COLUMNS        : %u", (videoCtrl >> 6) & 1);
+    ImGui::Text("  TRAM_PAGE         : %u", (videoCtrl >> 7) & 1);
     ImGui::Text("$E1/$E2 VSCRX   : %u", videoScrX);
     ImGui::Text("$E3     VSCRY   : %u", videoScrY);
     ImGui::Text("$E4     VSPRSEL : %u", videoSprSel);

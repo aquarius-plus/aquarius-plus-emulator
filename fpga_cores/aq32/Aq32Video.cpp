@@ -12,8 +12,6 @@ void Aq32Video::reset() {
     videoCtrl    = 0;
     videoScrX    = 0;
     videoScrY    = 0;
-    videoSprSel  = 0;
-    videoPalSel  = 0;
     videoLine    = 0;
     videoIrqLine = 0;
 }
@@ -165,25 +163,25 @@ void Aq32Video::drawLine(int line) {
         // Render sprites
         if ((videoCtrl & (1 << 3)) != 0) {
             for (int i = 0; i < 64; i++) {
-                unsigned sprAttr = videoSprAttr[i];
+                const auto &sprite = sprites[i];
 
                 // Check if sprite enabled
-                bool enabled = (sprAttr & (1 << 7)) != 0;
+                bool enabled = (sprite.attr & (1 << 7)) != 0;
                 if (!enabled)
                     continue;
 
                 // Check if sprite is visible on this line
-                bool h16     = (sprAttr & (1 << 3)) != 0;
-                int  sprLine = (bmline - videoSprY[i]) & 0xFF;
+                bool h16     = (sprite.attr & (1 << 3)) != 0;
+                int  sprLine = (bmline - sprite.y) & 0xFF;
                 if (sprLine >= (h16 ? 16 : 8))
                     continue;
 
-                int      sprX     = videoSprX[i];
-                unsigned tileIdx  = videoSprIdx[i];
-                bool     hFlip    = (sprAttr & (1 << 1)) != 0;
-                bool     vFlip    = (sprAttr & (1 << 2)) != 0;
-                uint8_t  palette  = sprAttr & 0x30;
-                bool     priority = (sprAttr & (1 << 6)) != 0;
+                int      sprX     = sprite.x;
+                unsigned tileIdx  = sprite.idx;
+                bool     hFlip    = (sprite.attr & (1 << 1)) != 0;
+                bool     vFlip    = (sprite.attr & (1 << 2)) != 0;
+                uint8_t  palette  = sprite.attr & 0x30;
+                bool     priority = (sprite.attr & (1 << 6)) != 0;
 
                 unsigned idx = sprX;
 
@@ -268,17 +266,20 @@ void Aq32Video::drawLine(int line) {
 }
 
 void Aq32Video::dbgDrawIoRegs() {
-    ImGui::Text("$E0     VCTRL   : $%02X", videoCtrl);
-    ImGui::Text("$E1/$E2 VSCRX   : %u", videoScrX);
-    ImGui::Text("$E3     VSCRY   : %u", videoScrY);
-    ImGui::Text("$E4     VSPRSEL : %u", videoSprSel);
-    ImGui::Text("$E5/$E6 VSPRX   : %u", videoSprX[videoSprSel]);
-    ImGui::Text("$E7     VSPRY   : %u", videoSprY[videoSprSel]);
-    ImGui::Text("$E8/$E9 VSPRIDX : %u", videoSprIdx[videoSprSel]);
-    ImGui::Text("$E9     VSPRATTR: $%02X", videoSprAttr[videoSprSel]);
-    ImGui::Text("$EA     VPALSEL : %u", videoPalSel);
-    ImGui::Text("$EC     VLINE   : %u", videoLine);
-    ImGui::Text("$ED     VIRQLINE: %u", videoIrqLine);
+    static const char *gfxMode[] = {"OFF", "TILEMAP", "BITMAP", "BITMAP_4BPP"};
+
+    ImGui::Text("VCTRL   : 0x%02X", videoCtrl);
+    ImGui::Text("  TEXT_ENABLE       : %u", videoCtrl & 1);
+    ImGui::Text("  MODE              : %u (%s)", (videoCtrl >> 1) & 3, gfxMode[(videoCtrl >> 1) & 3]);
+    ImGui::Text("  SPRITES_ENABLE    : %u", (videoCtrl >> 3) & 1);
+    ImGui::Text("  TEXT_PRIORITY     : %u", (videoCtrl >> 4) & 1);
+    ImGui::Text("  REMAP_BORDER_CHAR : %u", (videoCtrl >> 5) & 1);
+    ImGui::Text("  80_COLUMNS        : %u", (videoCtrl >> 6) & 1);
+    ImGui::Text("  TRAM_PAGE         : %u", (videoCtrl >> 7) & 1);
+    ImGui::Text("VSCRX   : %u", videoScrX);
+    ImGui::Text("VSCRY   : %u", videoScrY);
+    ImGui::Text("VLINE   : %u", videoLine);
+    ImGui::Text("VIRQLINE: %u", videoIrqLine);
 }
 
 void Aq32Video::dbgDrawSpriteRegs() {
@@ -300,27 +301,29 @@ void Aq32Video::dbgDrawSpriteRegs() {
         clipper.Begin(64);
         while (clipper.Step()) {
             for (int row_n = clipper.DisplayStart; row_n < clipper.DisplayEnd; row_n++) {
+                const auto &sprite = sprites[row_n];
+
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
                 ImGui::Text("%2d", row_n);
                 ImGui::TableNextColumn();
-                ImGui::Text("%3d", videoSprX[row_n]);
+                ImGui::Text("%3d", sprite.x);
                 ImGui::TableNextColumn();
-                ImGui::Text("%3d", videoSprY[row_n]);
+                ImGui::Text("%3d", sprite.y);
                 ImGui::TableNextColumn();
-                ImGui::Text("%3d", videoSprIdx[row_n]);
+                ImGui::Text("%3d", sprite.idx);
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted((videoSprAttr[row_n] & 0x80) ? "X" : "");
+                ImGui::TextUnformatted((sprite.attr & 0x80) ? "X" : "");
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted((videoSprAttr[row_n] & 0x40) ? "X" : "");
+                ImGui::TextUnformatted((sprite.attr & 0x40) ? "X" : "");
                 ImGui::TableNextColumn();
-                ImGui::Text("%d", (videoSprAttr[row_n] >> 4) & 3);
+                ImGui::Text("%d", (sprite.attr >> 4) & 3);
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted((videoSprAttr[row_n] & 0x08) ? "X" : "");
+                ImGui::TextUnformatted((sprite.attr & 0x08) ? "X" : "");
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted((videoSprAttr[row_n] & 0x04) ? "X" : "");
+                ImGui::TextUnformatted((sprite.attr & 0x04) ? "X" : "");
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted((videoSprAttr[row_n] & 0x02) ? "X" : "");
+                ImGui::TextUnformatted((sprite.attr & 0x02) ? "X" : "");
             }
         }
         ImGui::EndTable();
