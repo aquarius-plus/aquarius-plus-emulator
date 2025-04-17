@@ -59,7 +59,7 @@ void Aq32Video::drawLine(int line) {
             uint8_t  color  = val >> 8;
             uint8_t  charBm = charRam[ch * 8 + (line & 7)];
 
-            lineText[idx] = (charBm & (1 << (7 - ((mode80 ? i : (i / 2)) & 7)))) ? (color >> 4) : (color & 0xF);
+            lineText[idx] = (charBm & (1 << (7 - ((mode80 ? i : (i / 2)) & 7)))) ? (color & 0xF) : (color >> 4);
             idx           = (idx + 1) & 1023;
         }
     }
@@ -85,13 +85,10 @@ void Aq32Video::drawLine(int line) {
 
             case VCTRL_GFXMODE_BITMAP_4BPP: {
                 // Bitmap mode 4bpp
-                for (int i = 0; i < 80; i++) {
-                    uint8_t col = videoRam[bmline * 80 + i];
-
+                for (int i = 0; i < 0; i++) {
+                    uint8_t col        = videoRam[bmline * 80 + i];
                     lineGfx[i * 4 + 0] = (1 << 4) | (col >> 4);
-                    lineGfx[i * 4 + 1] = (1 << 4) | (col >> 4);
-                    lineGfx[i * 4 + 2] = (1 << 4) | (col & 0xF);
-                    lineGfx[i * 4 + 3] = (1 << 4) | (col & 0xF);
+                    lineGfx[i * 4 + 1] = (1 << 4) | (col & 0xF);
                 }
                 break;
             }
@@ -166,22 +163,22 @@ void Aq32Video::drawLine(int line) {
                 const auto &sprite = sprites[i];
 
                 // Check if sprite enabled
-                bool enabled = (sprite.attr & (1 << 7)) != 0;
+                bool enabled = (sprite.attr & (1 << 15)) != 0;
                 if (!enabled)
                     continue;
 
                 // Check if sprite is visible on this line
-                bool h16     = (sprite.attr & (1 << 3)) != 0;
+                bool h16     = (sprite.attr & (1 << 11)) != 0;
                 int  sprLine = (bmline - sprite.y) & 0xFF;
                 if (sprLine >= (h16 ? 16 : 8))
                     continue;
 
                 int      sprX     = sprite.x;
-                unsigned tileIdx  = sprite.idx;
-                bool     hFlip    = (sprite.attr & (1 << 1)) != 0;
-                bool     vFlip    = (sprite.attr & (1 << 2)) != 0;
-                uint8_t  palette  = sprite.attr & 0x30;
-                bool     priority = (sprite.attr & (1 << 6)) != 0;
+                unsigned tileIdx  = sprite.attr & 0x1FF;
+                bool     hFlip    = (sprite.attr & (1 << 9)) != 0;
+                bool     vFlip    = (sprite.attr & (1 << 10)) != 0;
+                uint8_t  palette  = (sprite.attr >> 8) & 0x30;
+                bool     priority = (sprite.attr & (1 << 14)) != 0;
 
                 unsigned idx = sprX;
 
@@ -311,19 +308,19 @@ void Aq32Video::dbgDrawSpriteRegs() {
                 ImGui::TableNextColumn();
                 ImGui::Text("%3d", sprite.y);
                 ImGui::TableNextColumn();
-                ImGui::Text("%3d", sprite.idx);
+                ImGui::Text("%3d", sprite.attr & 0x1FF);
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted((sprite.attr & 0x80) ? "X" : "");
+                ImGui::TextUnformatted((sprite.attr & 0x8000) ? "X" : "");
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted((sprite.attr & 0x40) ? "X" : "");
+                ImGui::TextUnformatted((sprite.attr & 0x4000) ? "X" : "");
                 ImGui::TableNextColumn();
-                ImGui::Text("%d", (sprite.attr >> 4) & 3);
+                ImGui::Text("%d", (sprite.attr >> 12) & 3);
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted((sprite.attr & 0x08) ? "X" : "");
+                ImGui::TextUnformatted((sprite.attr & 0x0800) ? "X" : "");
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted((sprite.attr & 0x04) ? "X" : "");
+                ImGui::TextUnformatted((sprite.attr & 0x0400) ? "X" : "");
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted((sprite.attr & 0x02) ? "X" : "");
+                ImGui::TextUnformatted((sprite.attr & 0x0200) ? "X" : "");
             }
         }
         ImGui::EndTable();

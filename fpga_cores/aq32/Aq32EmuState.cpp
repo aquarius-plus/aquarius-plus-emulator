@@ -12,27 +12,21 @@
 #define HCYCLES_PER_LINE   (455)
 #define HCYCLES_PER_SAMPLE (162)
 
-#define MAINRAM_START     0x80000000
-#define MAINRAM_SIZE_MASK 0x7FFFF
-#define TEXTRAM_START     0xFF000000
-#define TEXTRAM_SIZE_MASK 0xFFF
-#define CHRAM_START       0xFF100000
-#define CHRAM_SIZE_MASK   0x7FF
-#define VRAM_START        0xFF200000
-#define VRAM_SIZE_MASK    0x3FFF
-#define SPRATTR_START     0xFF300000
-#define SPRATTR_SIZE_MASK 0
-#define PALETTE_START     0xFF400000
-#define PALETTE_SIZE_MASK 0x7F
-#define REG_ESPCTRL       0xFF500000
-#define REG_ESPDATA       0xFF500004
-#define REG_VCTRL         0xFF500008
-#define REG_VSCRX         0xFF50000C
-#define REG_VSCRY         0xFF500010
-#define REG_VLINE         0xFF500014
-#define REG_VIRQLINE      0xFF500018
-#define REG_KEYBUF        0xFF50001C
-#define BOOTROM_START     0xFFFFF800
+#define MAINRAM_BASE  0x80000000
+#define TEXTRAM_BASE  0xFF000000
+#define CHRAM_BASE    0xFF100000
+#define VRAM_BASE     0xFF200000
+#define SPRATTR_BASE  0xFF300000
+#define PALETTE_BASE  0xFF400000
+#define REG_ESPCTRL   0xFF500000
+#define REG_ESPDATA   0xFF500004
+#define REG_VCTRL     0xFF500008
+#define REG_VSCRX     0xFF50000C
+#define REG_VSCRY     0xFF500010
+#define REG_VLINE     0xFF500014
+#define REG_VIRQLINE  0xFF500018
+#define REG_KEYBUF    0xFF50001C
+#define BOOTROM_START 0xFFFFF800
 
 class Aq32EmuState : public EmuState {
 public:
@@ -156,24 +150,30 @@ public:
     bool pasteIsDone() override { return typeInStr.empty(); }
 
     uint32_t memRead(uint32_t addr) {
-        if (addr >= MAINRAM_START && addr <= (MAINRAM_START + MAINRAM_SIZE_MASK)) {
-            return mainRam[(addr & MAINRAM_SIZE_MASK) / 4];
-        } else if (addr >= TEXTRAM_START && addr <= (TEXTRAM_START + TEXTRAM_SIZE_MASK)) {
+        if (addr >= MAINRAM_BASE && addr < (MAINRAM_BASE + sizeof(mainRam))) {
+            return mainRam[(addr & (sizeof(mainRam) - 1)) / 4];
+        } else if (addr >= TEXTRAM_BASE && addr < (TEXTRAM_BASE + sizeof(video.textRam))) {
             // Text RAM (8b/16b)
-            uint32_t val = video.textRam[(addr & TEXTRAM_SIZE_MASK) / 2];
+            uint32_t val = video.textRam[(addr & (sizeof(video.textRam) - 1)) / 2];
             val |= val << 16;
             return val;
-        } else if (addr >= CHRAM_START && addr <= (CHRAM_START + CHRAM_SIZE_MASK)) {
+        } else if (addr >= CHRAM_BASE && addr < (CHRAM_BASE + sizeof(video.charRam))) {
             // Character RAM (8b)
-            return video.charRam[addr & CHRAM_SIZE_MASK];
-        } else if (addr >= VRAM_START && addr <= (VRAM_START + VRAM_SIZE_MASK)) {
+            return video.charRam[addr & (sizeof(video.charRam) - 1)];
+        } else if (addr >= VRAM_BASE && addr < (VRAM_BASE + sizeof(video.videoRam))) {
             // Video RAM (8/16/32b)
-            return reinterpret_cast<uint32_t *>(video.videoRam)[addr & VRAM_SIZE_MASK];
-        } else if (addr >= SPRATTR_START && addr <= (SPRATTR_START + SPRATTR_SIZE_MASK)) {
-            // Sprite attributes
-        } else if (addr >= PALETTE_START && addr <= (PALETTE_START + PALETTE_SIZE_MASK)) {
+            return reinterpret_cast<uint32_t *>(video.videoRam)[addr & (sizeof(video.videoRam) - 1)];
+        } else if (addr >= SPRATTR_BASE && addr < (SPRATTR_BASE + 64 * 8)) {
+            // Sprite attributes (32b)
+            int sprIdx = (addr >> 3) & 63;
+            if (addr & 4) {
+                return video.sprites[sprIdx].attr;
+            } else {
+                return (video.sprites[sprIdx].y << 16) | (video.sprites[sprIdx].x & 0x1FF);
+            }
+        } else if (addr >= PALETTE_BASE && addr < (PALETTE_BASE + sizeof(video.videoPalette))) {
             // Palette (16b)
-            return video.videoPalette[(addr >> 1) & 63];
+            return video.videoPalette[(addr & (sizeof(video.videoPalette) - 1)) / 2];
         } else if (addr == REG_ESPCTRL) {
             return UartProtocol::instance()->readCtrl();
         } else if (addr == REG_ESPDATA) {
@@ -202,26 +202,33 @@ public:
     }
 
     void memWrite(uint32_t addr, uint32_t val, uint32_t mask) {
-        if (addr >= MAINRAM_START && addr <= (MAINRAM_START + MAINRAM_SIZE_MASK)) {
-            auto p = &mainRam[(addr & MAINRAM_SIZE_MASK) / 4];
+        if (addr >= MAINRAM_BASE && addr < (MAINRAM_BASE + sizeof(mainRam))) {
+            auto p = &mainRam[(addr & (sizeof(mainRam) - 1)) / 4];
             *p     = (*p & ~mask) | (val & mask);
-        } else if (addr >= TEXTRAM_START && addr <= (TEXTRAM_START + TEXTRAM_SIZE_MASK)) {
+        } else if (addr >= TEXTRAM_BASE && addr < (TEXTRAM_BASE + sizeof(video.textRam))) {
             // Text RAM (8b/16b)
             uint16_t msk = (mask >> 16) | (mask & 0xFFFF);
-            auto     p   = &video.textRam[(addr & TEXTRAM_SIZE_MASK) / 2];
+            auto     p   = &video.textRam[(addr & (sizeof(video.textRam) - 1)) / 2];
             *p           = (*p & ~msk) | (val & msk);
-        } else if (addr >= CHRAM_START && addr <= (CHRAM_START + CHRAM_SIZE_MASK)) {
+        } else if (addr >= CHRAM_BASE && addr < (CHRAM_BASE + sizeof(video.charRam))) {
             // Character RAM (8b)
-            video.charRam[addr & CHRAM_SIZE_MASK] = val & 0xFF;
-        } else if (addr >= VRAM_START && addr <= (VRAM_START + VRAM_SIZE_MASK)) {
+            video.charRam[addr & (sizeof(video.charRam) - 1)] = val & 0xFF;
+        } else if (addr >= VRAM_BASE && addr < (VRAM_BASE + sizeof(video.videoRam))) {
             // Video RAM (8/16/32b)
-            auto p = reinterpret_cast<uint32_t *>(&video.videoRam[addr & VRAM_SIZE_MASK]);
+            auto p = reinterpret_cast<uint32_t *>(&video.videoRam[addr & (sizeof(video.videoRam) - 1)]);
             *p     = (*p & ~mask) | (val & mask);
-        } else if (addr >= SPRATTR_START && addr <= (SPRATTR_START + SPRATTR_SIZE_MASK)) {
-            // Sprite attributes
-        } else if (addr >= PALETTE_START && addr <= (PALETTE_START + PALETTE_SIZE_MASK)) {
+        } else if (addr >= SPRATTR_BASE && addr < (SPRATTR_BASE + 64 * 8)) {
+            // Sprite attributes (32b)
+            int sprIdx = (addr >> 3) & 63;
+            if (addr & 4) {
+                video.sprites[sprIdx].attr = val & 0xFFFF;
+            } else {
+                video.sprites[sprIdx].x = val & 0x1FF;
+                video.sprites[sprIdx].y = (val >> 16) & 0xFF;
+            }
+        } else if (addr >= PALETTE_BASE && addr < (PALETTE_BASE + sizeof(video.videoPalette))) {
             // Palette (16b)
-            video.videoPalette[(addr >> 1) & 63] = val & 0xFFF;
+            video.videoPalette[(addr & (sizeof(video.videoPalette) - 1)) / 2] = val & 0xFFF;
         } else if (addr == REG_ESPCTRL) {
             UartProtocol::instance()->writeCtrl(val & 0xFF);
         } else if (addr == REG_ESPDATA) {

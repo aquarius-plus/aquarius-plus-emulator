@@ -27,11 +27,15 @@ public:
     bool isOnVideoIrqLine() { return videoLine == videoIrqLine; }
     bool isOnStartOfVBlank() { return videoLine == 240; }
 
-    void    reset();
+    void reset();
+    void drawLine(int line);
+
+    void dbgDrawIoRegs();
+    void dbgDrawSpriteRegs();
+    void dbgDrawPaletteRegs();
+
     void    writeReg(uint8_t r, uint8_t v);
     uint8_t readReg(uint8_t r);
-    void    drawLine(int line);
-    int     getLine() { return videoLine; }
 
     uint8_t readScreenOrColorRam(unsigned addr) {
         addr &= 0x7FF;
@@ -72,10 +76,6 @@ public:
             }
         }
     }
-
-    void dbgDrawIoRegs();
-    void dbgDrawSpriteRegs();
-    void dbgDrawPaletteRegs();
 
     uint8_t screenRam[2048];     // $3000-33FF: Screen RAM for text mode
     uint8_t colorRam[2048];      // $3400-37FF: Color RAM for text mode
