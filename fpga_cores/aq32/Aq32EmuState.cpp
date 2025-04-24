@@ -12,21 +12,21 @@
 #define HCYCLES_PER_LINE   (455)
 #define HCYCLES_PER_SAMPLE (162)
 
-#define MAINRAM_BASE  0x80000000
-#define TEXTRAM_BASE  0xFF000000
-#define CHRAM_BASE    0xFF100000
-#define VRAM_BASE     0xFF200000
-#define SPRATTR_BASE  0xFF300000
-#define PALETTE_BASE  0xFF400000
-#define REG_ESPCTRL   0xFF500000
-#define REG_ESPDATA   0xFF500004
-#define REG_VCTRL     0xFF500008
-#define REG_VSCRX     0xFF50000C
-#define REG_VSCRY     0xFF500010
-#define REG_VLINE     0xFF500014
-#define REG_VIRQLINE  0xFF500018
-#define REG_KEYBUF    0xFF50001C
-#define BOOTROM_START 0xFFFFF800
+#define BASE_BOOTROM 0x00000
+#define REG_ESPCTRL  0x02000
+#define REG_ESPDATA  0x02004
+#define REG_VCTRL    0x02008
+#define REG_VSCRX    0x0200C
+#define REG_VSCRY    0x02010
+#define REG_VLINE    0x02014
+#define REG_VIRQLINE 0x02018
+#define REG_KEYBUF   0x0201C
+#define BASE_SPRATTR 0x03000
+#define BASE_PALETTE 0x04000
+#define BASE_CHRAM   0x05000
+#define BASE_TEXTRAM 0x06000
+#define BASE_VRAM    0x08000
+#define MAINRAM_BASE 0x80000
 
 class Aq32EmuState : public EmuState {
 public:
@@ -150,30 +150,8 @@ public:
     bool pasteIsDone() override { return typeInStr.empty(); }
 
     uint32_t memRead(uint32_t addr) {
-        if (addr >= MAINRAM_BASE && addr < (MAINRAM_BASE + sizeof(mainRam))) {
-            return mainRam[(addr & (sizeof(mainRam) - 1)) / 4];
-        } else if (addr >= TEXTRAM_BASE && addr < (TEXTRAM_BASE + sizeof(video.textRam))) {
-            // Text RAM (8b/16b)
-            uint32_t val = video.textRam[(addr & (sizeof(video.textRam) - 1)) / 2];
-            val |= val << 16;
-            return val;
-        } else if (addr >= CHRAM_BASE && addr < (CHRAM_BASE + sizeof(video.charRam))) {
-            // Character RAM (8b)
-            return video.charRam[addr & (sizeof(video.charRam) - 1)];
-        } else if (addr >= VRAM_BASE && addr < (VRAM_BASE + sizeof(video.videoRam))) {
-            // Video RAM (8/16/32b)
-            return reinterpret_cast<uint32_t *>(video.videoRam)[addr & (sizeof(video.videoRam) - 1)];
-        } else if (addr >= SPRATTR_BASE && addr < (SPRATTR_BASE + 64 * 8)) {
-            // Sprite attributes (32b)
-            int sprIdx = (addr >> 3) & 63;
-            if (addr & 4) {
-                return video.sprites[sprIdx].attr;
-            } else {
-                return (video.sprites[sprIdx].y << 16) | (video.sprites[sprIdx].x & 0x1FF);
-            }
-        } else if (addr >= PALETTE_BASE && addr < (PALETTE_BASE + sizeof(video.videoPalette))) {
-            // Palette (16b)
-            return video.videoPalette[(addr & (sizeof(video.videoPalette) - 1)) / 2];
+        if (/* addr >= BASE_BOOTROM && */ addr < (BASE_BOOTROM + sizeof(bootRom))) {
+            return bootRom[(addr & 0x7FF) / 4];
         } else if (addr == REG_ESPCTRL) {
             return UartProtocol::instance()->readCtrl();
         } else if (addr == REG_ESPDATA) {
@@ -195,41 +173,36 @@ public:
                 kbBuf.pop_front();
             }
             return result;
-        } else if (addr >= BOOTROM_START) {
-            return bootRom[(addr & 0x7FF) / 4];
+        } else if (addr >= BASE_SPRATTR && addr < (BASE_SPRATTR + 64 * 8)) {
+            // Sprite attributes (32b)
+            int sprIdx = (addr >> 3) & 63;
+            if (addr & 4) {
+                return video.sprites[sprIdx].attr;
+            } else {
+                return (video.sprites[sprIdx].y << 16) | (video.sprites[sprIdx].x & 0x1FF);
+            }
+        } else if (addr >= BASE_PALETTE && addr < (BASE_PALETTE + sizeof(video.videoPalette))) {
+            // Palette (16b)
+            return video.videoPalette[(addr & (sizeof(video.videoPalette) - 1)) / 2];
+        } else if (addr >= BASE_CHRAM && addr < (BASE_CHRAM + sizeof(video.charRam))) {
+            // Character RAM (8b)
+            return video.charRam[addr & (sizeof(video.charRam) - 1)];
+        } else if (addr >= BASE_TEXTRAM && addr < (BASE_TEXTRAM + sizeof(video.textRam))) {
+            // Text RAM (8b/16b)
+            uint32_t val = video.textRam[(addr & (sizeof(video.textRam) - 1)) / 2];
+            val |= val << 16;
+            return val;
+        } else if (addr >= BASE_VRAM && addr < (BASE_VRAM + sizeof(video.videoRam))) {
+            // Video RAM (8/16/32b)
+            return reinterpret_cast<uint32_t *>(video.videoRam)[addr & (sizeof(video.videoRam) - 1)];
+        } else if (addr >= MAINRAM_BASE && addr < (MAINRAM_BASE + sizeof(mainRam))) {
+            return mainRam[(addr & (sizeof(mainRam) - 1)) / 4];
         }
         return 0;
     }
 
     void memWrite(uint32_t addr, uint32_t val, uint32_t mask) {
-        if (addr >= MAINRAM_BASE && addr < (MAINRAM_BASE + sizeof(mainRam))) {
-            auto p = &mainRam[(addr & (sizeof(mainRam) - 1)) / 4];
-            *p     = (*p & ~mask) | (val & mask);
-        } else if (addr >= TEXTRAM_BASE && addr < (TEXTRAM_BASE + sizeof(video.textRam))) {
-            // Text RAM (8b/16b)
-            uint16_t msk = (mask >> 16) | (mask & 0xFFFF);
-            auto     p   = &video.textRam[(addr & (sizeof(video.textRam) - 1)) / 2];
-            *p           = (*p & ~msk) | (val & msk);
-        } else if (addr >= CHRAM_BASE && addr < (CHRAM_BASE + sizeof(video.charRam))) {
-            // Character RAM (8b)
-            video.charRam[addr & (sizeof(video.charRam) - 1)] = val & 0xFF;
-        } else if (addr >= VRAM_BASE && addr < (VRAM_BASE + sizeof(video.videoRam))) {
-            // Video RAM (8/16/32b)
-            auto p = reinterpret_cast<uint32_t *>(&video.videoRam[addr & (sizeof(video.videoRam) - 1)]);
-            *p     = (*p & ~mask) | (val & mask);
-        } else if (addr >= SPRATTR_BASE && addr < (SPRATTR_BASE + 64 * 8)) {
-            // Sprite attributes (32b)
-            int sprIdx = (addr >> 3) & 63;
-            if (addr & 4) {
-                video.sprites[sprIdx].attr = val & 0xFFFF;
-            } else {
-                video.sprites[sprIdx].x = val & 0x1FF;
-                video.sprites[sprIdx].y = (val >> 16) & 0xFF;
-            }
-        } else if (addr >= PALETTE_BASE && addr < (PALETTE_BASE + sizeof(video.videoPalette))) {
-            // Palette (16b)
-            video.videoPalette[(addr & (sizeof(video.videoPalette) - 1)) / 2] = val & 0xFFF;
-        } else if (addr == REG_ESPCTRL) {
+        if (addr == REG_ESPCTRL) {
             UartProtocol::instance()->writeCtrl(val & 0xFF);
         } else if (addr == REG_ESPDATA) {
             if (val & 0x100) {
@@ -248,6 +221,33 @@ public:
             video.videoIrqLine = val & 0xFF;
         } else if (addr == REG_KEYBUF) {
             kbBuf.clear();
+        } else if (addr >= BASE_SPRATTR && addr < (BASE_SPRATTR + 64 * 8)) {
+            // Sprite attributes (32b)
+            int sprIdx = (addr >> 3) & 63;
+            if (addr & 4) {
+                video.sprites[sprIdx].attr = val & 0xFFFF;
+            } else {
+                video.sprites[sprIdx].x = val & 0x1FF;
+                video.sprites[sprIdx].y = (val >> 16) & 0xFF;
+            }
+        } else if (addr >= BASE_PALETTE && addr < (BASE_PALETTE + sizeof(video.videoPalette))) {
+            // Palette (16b)
+            video.videoPalette[(addr & (sizeof(video.videoPalette) - 1)) / 2] = val & 0xFFF;
+        } else if (addr >= BASE_CHRAM && addr < (BASE_CHRAM + sizeof(video.charRam))) {
+            // Character RAM (8b)
+            video.charRam[addr & (sizeof(video.charRam) - 1)] = val & 0xFF;
+        } else if (addr >= BASE_TEXTRAM && addr < (BASE_TEXTRAM + sizeof(video.textRam))) {
+            // Text RAM (8b/16b)
+            uint16_t msk = (mask >> 16) | (mask & 0xFFFF);
+            auto     p   = &video.textRam[(addr & (sizeof(video.textRam) - 1)) / 2];
+            *p           = (*p & ~msk) | (val & msk);
+        } else if (addr >= BASE_VRAM && addr < (BASE_VRAM + sizeof(video.videoRam))) {
+            // Video RAM (8/16/32b)
+            auto p = reinterpret_cast<uint32_t *>(&video.videoRam[addr & (sizeof(video.videoRam) - 1)]);
+            *p     = (*p & ~mask) | (val & mask);
+        } else if (addr >= MAINRAM_BASE && addr < (MAINRAM_BASE + sizeof(mainRam))) {
+            auto p = &mainRam[(addr & (sizeof(mainRam) - 1)) / 4];
+            *p     = (*p & ~mask) | (val & mask);
         }
     }
 
