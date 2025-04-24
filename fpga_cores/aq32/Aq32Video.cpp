@@ -59,7 +59,7 @@ void Aq32Video::drawLine(int line) {
             uint8_t  color  = val >> 8;
             uint8_t  charBm = charRam[ch * 8 + (line & 7)];
 
-            lineText[idx] = (charBm & (1 << (7 - ((mode80 ? i : (i / 2)) & 7)))) ? (color & 0xF) : (color >> 4);
+            lineText[idx] = (charBm & (1 << (7 - ((mode80 ? i : (i / 2)) & 7)))) ? (color >> 4) : (color & 0xF);
             idx           = (idx + 1) & 1023;
         }
     }
