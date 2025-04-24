@@ -69,7 +69,7 @@ public:
     void reset(bool cold = false) override {
         // CPU reset
         cpu.regs[0]      = 0;
-        cpu.pc           = 0xFFFFF800;
+        cpu.pc           = 0;
         cpu.mstatus_mie  = false;
         cpu.mstatus_mpie = false;
         cpu.mie          = 0;
