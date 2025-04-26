@@ -113,8 +113,8 @@ public:
         memcpy(coreName, "Aquarius32      ", sizeof(coreName));
 
         cpu.dataWrite = [this](uint32_t vaddr, uint32_t val, uint32_t mask) { memWrite(vaddr, val, mask); };
-        cpu.dataRead  = [this](uint32_t vaddr) { auto val = memRead(vaddr); if (val < 0) val = 0; return val; };
-        cpu.instrRead = [this](uint32_t vaddr) { auto val = memRead(vaddr); if (val < 0) val = 0; return val; };
+        cpu.dataRead  = [this](uint32_t vaddr) { auto val = memRead(vaddr); if (val < 0) val = 0; return (uint32_t)val; };
+        cpu.instrRead = [this](uint32_t vaddr) { auto val = memRead(vaddr); if (val < 0) val = 0; return (uint32_t)val; };
 
         memset(keybMatrix, 0xFF, sizeof(keybMatrix));
         memcpy(bootRom, bootrom_bin, bootrom_bin_len);
