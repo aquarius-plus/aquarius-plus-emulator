@@ -37,6 +37,7 @@ public:
     DCBlock             dcBlockLeft;
     DCBlock             dcBlockRight;
     std::string         typeInStr;
+    std::mutex          mutexTypeInStr;
     uint8_t             mainRam[512 * 1024];
     uint8_t             cartRom[16 * 1024];
 
@@ -201,8 +202,14 @@ public:
         }
     }
 
-    void pasteText(const std::string &str) override { typeInStr = str; }
-    bool pasteIsDone() override { return typeInStr.empty(); }
+    void pasteText(const std::string &str) override {
+        std::lock_guard lock(mutexTypeInStr);
+        typeInStr = str;
+    }
+    bool pasteIsDone() override {
+        std::lock_guard lock(mutexTypeInStr);
+        return typeInStr.empty();
+    }
 
     uint8_t memRead(uint16_t addr) {
         // Handle CPM remap bit
@@ -503,6 +510,7 @@ public:
     }
 
     void keyboardTypeIn() {
+        std::lock_guard lock(mutexTypeInStr);
         if (kbBuf.size() < kbBufSize && !typeInStr.empty()) {
             char ch = typeInStr.front();
             typeInStr.erase(typeInStr.begin());

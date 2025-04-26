@@ -53,7 +53,7 @@ struct MemoryEditor {
     int                                                 optAddrDigitsCount   = 0;                           // number of addr digits to display (default calculated based on maximum displayed addr).
     float                                               optFooterExtraHeight = 0.0f;                        // space to reserve at the bottom of the widget to add custom widgets
     ImU32                                               highlightColor       = IM_COL32(255, 255, 255, 50); // background color of highlighted bytes.
-    std::function<ImU8(const ImU8 *data, size_t off)>   readFn;                                             // optional handler to read bytes.
+    std::function<int(const ImU8 *data, size_t off)>    readFn;                                             // optional handler to read bytes.
     std::function<void(ImU8 *data, size_t off, ImU8 d)> writeFn;                                            // optional handler to write bytes.
     bool (*highlightFn)(const ImU8 *data, size_t off) = nullptr;                                            // optional handler to return Highlight property (to support non-contiguous highlighting).
 

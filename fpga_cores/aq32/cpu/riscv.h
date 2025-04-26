@@ -39,7 +39,7 @@ struct riscv {
     // Internal state
     uint32_t trap;
 
-    void emulate(int count);
+    void emulate();
     void dumpRegs();
 
     void pendInterrupt(uint32_t mask) { mip |= mask; }

@@ -1,11 +1,11 @@
 #include "MemoryEditor.h"
 
 #ifdef _MSC_VER
-#    define _PRISizeT "I"
-#    define ImSnprintf _snprintf
+#define _PRISizeT  "I"
+#define ImSnprintf _snprintf
 #else
-#    define _PRISizeT "z"
-#    define ImSnprintf snprintf
+#define _PRISizeT  "z"
+#define ImSnprintf snprintf
 #endif
 
 void MemoryEditor::gotoAddrAndHighlight(size_t addr_min, size_t addr_max) {
@@ -119,10 +119,9 @@ void MemoryEditor::drawContents(void *mem_data_void, size_t mem_size, size_t bas
     const char *format_byte       = "%02X";
     const char *format_byte_space = "%02X ";
 
-    while (clipper.Step())
-        for (int line_i = clipper.DisplayStart; line_i < clipper.DisplayEnd; line_i++) // display only visible lines
-        {
-            size_t addr = (size_t)(line_i * cols);
+    while (clipper.Step()) {
+        for (int line_i = clipper.DisplayStart; line_i < clipper.DisplayEnd; line_i++) { // display only visible lines
+            size_t addr = (size_t)((uint64_t)line_i * (uint64_t)cols);
             ImGui::Text(format_address, s.addrDigitsCount, base_display_addr + addr);
 
             // Draw Hexadecimal
@@ -155,7 +154,12 @@ void MemoryEditor::drawContents(void *mem_data_void, size_t mem_size, size_t bas
                     if (dataEditingTakeFocus) {
                         ImGui::SetKeyboardFocusHere(0);
                         ImSnprintf(addrInputBuf, sizeof(addrInputBuf), format_data, s.addrDigitsCount, base_display_addr + addr);
-                        ImSnprintf(dataInputBuf, sizeof(dataInputBuf), format_byte, readFn ? readFn(mem_data, addr) : mem_data[addr]);
+
+                        int b = readFn ? readFn(mem_data, addr) : mem_data[addr];
+                        if (b < 0)
+                            ImSnprintf(dataInputBuf, sizeof(dataInputBuf), "-- ");
+                        else
+                            ImSnprintf(dataInputBuf, sizeof(dataInputBuf), format_byte, b);
                     }
                     struct UserData {
                         // FIXME: We should have a way to retrieve the text edit cursor position more easily in the API, this is rather tedious. This is such a ugly mess we may be better off not using InputText() at all here.
@@ -179,7 +183,13 @@ void MemoryEditor::drawContents(void *mem_data_void, size_t mem_size, size_t bas
                     };
                     UserData user_data;
                     user_data.CursorPos = -1;
-                    ImSnprintf(user_data.CurrentBufOverwrite, sizeof(user_data.CurrentBufOverwrite), format_byte, readFn ? readFn(mem_data, addr) : mem_data[addr]);
+                    {
+                        int b = readFn ? readFn(mem_data, addr) : mem_data[addr];
+                        if (b < 0)
+                            ImSnprintf(user_data.CurrentBufOverwrite, sizeof(user_data.CurrentBufOverwrite), "--");
+                        else
+                            ImSnprintf(user_data.CurrentBufOverwrite, sizeof(user_data.CurrentBufOverwrite), format_byte, readFn ? readFn(mem_data, addr) : mem_data[addr]);
+                    }
                     ImGuiInputTextFlags flags = ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll | ImGuiInputTextFlags_NoHorizontalScroll | ImGuiInputTextFlags_CallbackAlways;
                     flags |= ImGuiInputTextFlags_AlwaysOverwrite;
                     ImGui::SetNextItemWidth(s.glyphWidth * 2);
@@ -202,11 +212,11 @@ void MemoryEditor::drawContents(void *mem_data_void, size_t mem_size, size_t bas
                     ImGui::PopID();
                 } else {
                     // NB: The trailing space is not visible but ensure there's no gap that the mouse cannot click on.
-                    ImU8 b = readFn ? readFn(mem_data, addr) : mem_data[addr];
+                    int b = readFn ? readFn(mem_data, addr) : mem_data[addr];
 
                     {
-                        if (b == 0)
-                            ImGui::TextDisabled("00 ");
+                        if (b < 0)
+                            ImGui::TextDisabled("-- ");
                         else
                             ImGui::Text(format_byte_space, b);
                     }
@@ -238,6 +248,7 @@ void MemoryEditor::drawContents(void *mem_data_void, size_t mem_size, size_t bas
                 pos.x += s.glyphWidth;
             }
         }
+    }
     ImGui::PopStyleVar(2);
     ImGui::EndChild();
 
