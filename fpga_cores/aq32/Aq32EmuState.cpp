@@ -548,7 +548,7 @@ public:
 
             {
                 auto data = memRead(cpu.pc, false);
-                auto str  = instrToString(data, cpu.pc);
+                auto str  = instrToString((uint32_t)data, cpu.pc);
                 ImGui::Text("%08X %s", (unsigned)data, str.c_str());
             }
 
@@ -702,7 +702,7 @@ public:
 
             if (memEditMemSelect == 0) {
                 memEdit.readFn = [this](const ImU8 *data, size_t off) {
-                    auto val = memRead(off, false);
+                    auto val = memRead((uint32_t)off, false);
                     if (val < 0)
                         return -1;
 
