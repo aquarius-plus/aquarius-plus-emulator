@@ -58,19 +58,19 @@ static int64_t getTimeUs() {
 
 class Aq32EmuState : public EmuState {
 public:
-    riscv               cpu;
-    Aq32Video           video;
-    uint8_t             keybMatrix[8] = {0};
-    std::deque<uint8_t> kbBuf;
-    const unsigned      kbBufSize  = 16;
-    unsigned            audioLeft  = 0;
-    unsigned            audioRight = 0;
-    DCBlock             dcBlockLeft;
-    DCBlock             dcBlockRight;
-    std::string         typeInStr;
-    std::mutex          mutexTypeInStr;
-    uint32_t            mainRam[512 * 1024 / 4];
-    uint32_t            bootRom[0x800 / 4];
+    riscv                cpu;
+    Aq32Video            video;
+    uint8_t              keybMatrix[8] = {0};
+    std::deque<uint16_t> kbBuf;
+    const unsigned       kbBufSize  = 16;
+    unsigned             audioLeft  = 0;
+    unsigned             audioRight = 0;
+    DCBlock              dcBlockLeft;
+    DCBlock              dcBlockRight;
+    std::string          typeInStr;
+    std::mutex           mutexTypeInStr;
+    uint32_t             mainRam[512 * 1024 / 4];
+    uint32_t             bootRom[0x800 / 4];
 
 #ifdef GDB_ENABLE
     // GDB interface
@@ -201,9 +201,9 @@ public:
                 break;
             }
 
-            case CMD_WRITE_KBBUF: {
-                if (txBuf.size() == 1 + 1 && kbBuf.size() < kbBufSize) {
-                    kbBuf.push_back(txBuf[1]);
+            case CMD_WRITE_KBBUF16: {
+                if (txBuf.size() == 1 + 2 && kbBuf.size() < kbBufSize) {
+                    kbBuf.push_back(txBuf[1] | (txBuf[2] << 8));
                 }
                 break;
             }
@@ -243,8 +243,10 @@ public:
         } else if (addr == REG_VIRQLINE) {
             return video.videoIrqLine;
         } else if (addr == REG_KEYBUF) {
-            uint8_t result = 0;
-            if (!kbBuf.empty()) {
+            uint32_t result = 0;
+            if (kbBuf.empty()) {
+                result = 1U << 31;
+            } else {
                 result = kbBuf.front();
                 if (allow_side_effect)
                     kbBuf.pop_front();

@@ -184,6 +184,30 @@ public:
         return (result < 0) ? mapErrNoResult() : 0;
     }
 
+    int lseek(int fd, int offset, int whence) {
+        if (basePath.empty())
+            return ERR_NO_DISK;
+
+        if (fd >= MAX_FDS || fds[fd] == nullptr || whence < 0 || whence > 2)
+            return ERR_PARAM;
+
+        switch (whence) {
+            case 0: whence = SEEK_SET; break;
+            case 1: whence = SEEK_CUR; break;
+            case 2: whence = SEEK_END; break;
+        }
+
+        FILE *f      = fds[fd];
+        int   result = ::fseek(f, offset, whence);
+        if (result < 0)
+            return mapErrNoResult();
+
+        result = ::ftell(f);
+        if (result < 0)
+            return mapErrNoResult();
+        return result;
+    }
+
     int tell(int fd) override {
         if (basePath.empty())
             return ERR_NO_DISK;
