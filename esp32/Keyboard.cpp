@@ -330,6 +330,14 @@ public:
     }
 #endif
 
+    void reset() override {
+        RecursiveMutexLock lock(mutex);
+        modifiers    = 0;
+        repeat       = 0;
+        pressCounter = 0;
+        composeFirst = 0;
+    }
+
     void handleScancode(unsigned scanCode, bool keyDown) override {
         RecursiveMutexLock lock(mutex);
         repeat       = 0;

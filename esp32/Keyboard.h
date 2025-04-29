@@ -19,8 +19,9 @@ public:
 #endif
     virtual void handleScancode(unsigned scanCode, bool keyDown) = 0;
 
-    virtual int getKey(TickType_t ticksToWait) = 0;
-    virtual int waitScanCode()                 = 0;
+    virtual void reset()                        = 0;
+    virtual int  getKey(TickType_t ticksToWait) = 0;
+    virtual int  waitScanCode()                 = 0;
 
     virtual void        setKeyLayout(KeyLayout layout)     = 0;
     virtual KeyLayout   getKeyLayout()                     = 0;

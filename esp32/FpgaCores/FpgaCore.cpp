@@ -2,6 +2,7 @@
 #include "FPGA.h"
 #include "XzDecompress.h"
 #include "DisplayOverlay/DisplayOverlay.h"
+#include "Keyboard.h"
 
 static const char *TAG = "FpgaCore";
 
@@ -19,6 +20,8 @@ std::shared_ptr<FpgaCore> FpgaCore::get() {
 void FpgaCore::unload() {
     currentCore = nullptr;
     memset(&coreInfo, 0, sizeof(coreInfo));
+
+    Keyboard::instance()->reset();
 }
 
 std::shared_ptr<FpgaCore> FpgaCore::load(const void *data, size_t length) {
