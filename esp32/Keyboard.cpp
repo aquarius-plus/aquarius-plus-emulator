@@ -599,7 +599,7 @@ public:
                     ch           = compose(composeFirst, ch);
                     composeFirst = 0;
 
-                } else if (modifiers & ModLAlt) {
+                } else if (modifiers & ModRAlt) {
                     composeFirst = ch;
                     ch           = 0;
                 }
