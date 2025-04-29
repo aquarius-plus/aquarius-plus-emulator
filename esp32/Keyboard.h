@@ -26,9 +26,6 @@ public:
     virtual KeyLayout   getKeyLayout()                     = 0;
     virtual std::string getKeyLayoutName(KeyLayout layout) = 0;
 
-    virtual void    setKeyMode(uint8_t mode) = 0;
-    virtual uint8_t getKeyMode()             = 0;
-
     virtual void pressKey(uint8_t ch) = 0;
 };
 

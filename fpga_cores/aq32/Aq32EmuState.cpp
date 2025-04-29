@@ -106,7 +106,7 @@ public:
     MemoryEditor memEdit;
 
     Aq32EmuState() {
-        coreType         = 1;
+        coreType         = 2;
         coreFlags        = 0x02;
         coreVersionMajor = 0;
         coreVersionMinor = 1;
@@ -414,32 +414,6 @@ public:
             if (ImGui::CollapsingHeader("Palette")) {
                 video.dbgDrawPaletteRegs();
             }
-            if (ImGui::CollapsingHeader("Key buffer")) {
-                auto keyMode = Keyboard::instance()->getKeyMode();
-
-                {
-                    uint8_t val = kbBuf.empty() ? 0 : kbBuf.front();
-                    ImGui::Text("$FA KEYBUF: $%02X (%c)", val, val > 32 && val < 127 ? val : '.');
-                }
-                ImGui::Text(
-                    "   KEYMODE: $%02X %s%s%s\n",
-                    keyMode,
-                    (keyMode & 1) ? "[Enable]" : "",
-                    (keyMode & 2) ? "[ASCII]" : "[ScanCode]",
-                    (keyMode & 4) ? "[Repeat]" : "");
-
-                std::string str = "Key buffer: ";
-
-                for (unsigned i = 0; i < kbBuf.size(); i++) {
-                    if (keyMode & 2) {
-                        uint8_t val = kbBuf[i];
-                        str += fmtstr("%c", val > 32 && val < 127 ? val : '.');
-                    } else {
-                        str += fmtstr("%02X ", kbBuf[i]);
-                    }
-                }
-                ImGui::Text("%s", str.c_str());
-            }
         }
         ImGui::End();
     }
@@ -460,60 +434,6 @@ public:
             if (ImGui::Button("Step Into")) {
                 emuMode = Em_Step;
             }
-#if 0
-            ImGui::SameLine();
-            if (ImGui::Button("Step Over")) {
-                // int tmpBreakpoint = -1;
-    
-                // if (emuState.z80ctx.halted) {
-                //     // Step over HALT instruction
-                //     emuState.z80ctx.halted = 0;
-                //     emuState.z80ctx.PC++;
-                // } else {
-                //     uint8_t opcode = emuState.memRead(emuState.z80ctx.PC);
-                //     if (opcode == 0xCD ||          // CALL nn
-                //         (opcode & 0xC7) == 0xC4) { // CALL c,nn
-    
-                //         tmpBreakpoint = emuState.z80ctx.PC + 3;
-    
-                //     } else if ((opcode & 0xC7) == 0xC7) { // RST
-                //         tmpBreakpoint = emuState.z80ctx.PC + 1;
-                //         if ((opcode & 0x38) == 0x08 ||
-                //             (opcode & 0x38) == 0x30) {
-    
-                //             // Skip one extra byte on RST 08H/30H, since on the Aq these
-                //             // system calls absorb the byte following this instruction.
-                //             tmpBreakpoint++;
-                //         }
-    
-                //     } else if (opcode == 0xED) {
-                //         opcode = emuState.memRead(emuState.z80ctx.PC + 1);
-                //         if (opcode == 0xB9 || // CPDR
-                //             opcode == 0xB1 || // CPIR
-                //             opcode == 0xBA || // INDR
-                //             opcode == 0xB2 || // INIR
-                //             opcode == 0xB8 || // LDDR
-                //             opcode == 0xB0 || // LDIR
-                //             opcode == 0xBB || // OTDR
-                //             opcode == 0xB3) { // OTIR
-                //         }
-                //         tmpBreakpoint = emuState.z80ctx.PC + 2;
-                //     }
-                //     emuState.tmpBreakpoint = tmpBreakpoint;
-                //     if (tmpBreakpoint >= 0) {
-                //         emuMode = Em_Running;
-                //     } else {
-                //         emuMode = Em_Step;
-                //     }
-                // }
-            }
-    
-            ImGui::SameLine();
-            if (ImGui::Button("Step Out")) {
-                emuState.haltAfterRet = 0;
-                emuMode      = Em_Running;
-            }
-#endif
 
             ImGui::SameLine();
 
@@ -525,28 +445,6 @@ public:
             ImGui::EndDisabled();
 
             ImGui::Separator();
-
-            // {
-            //     uint16_t    addr = emuState.z80ctx.PC;
-            //     std::string name;
-            //     if (asmListing.findNearestSymbol(addr, name)) {
-            //         ImGui::Text("%s ($%04X + %u)", name.c_str(), addr, emuState.z80ctx.PC - addr);
-            //         ImGui::Separator();
-            //     }
-            // }
-
-            // {
-            //     char tmp1[64];
-            //     char tmp2[64];
-            //     emuState.z80ctx.tstates = 0;
-
-            //     bool prevEnableBp          = emuState.enableBreakpoints;
-            //     emuState.enableBreakpoints = false;
-            //     Z80Debug(&emuState.z80ctx, tmp1, tmp2);
-            //     emuState.enableBreakpoints = prevEnableBp;
-
-            //     ImGui::Text("         %-12s %s", tmp1, tmp2);
-            // }
 
             {
                 auto data = memRead(cpu.pc, false);
@@ -642,12 +540,6 @@ public:
                         ImGui::TableNextColumn();
                         ImGui::SetNextItemWidth(-1);
                         if (ImGui::BeginCombo(fmtstr("##name%d", row_n).c_str(), bp.name.c_str())) {
-                            //     for (auto &sym : asmListing.symbolsStrAddr) {
-                            //         if (ImGui::Selectable(fmtstr("%04X %s", sym.second, sym.first.c_str()).c_str())) {
-                            //             bp.name  = sym.first;
-                            //             bp.value = sym.second;
-                            //         }
-                            //     }
                             ImGui::EndCombo();
                         }
                         ImGui::TableNextColumn();

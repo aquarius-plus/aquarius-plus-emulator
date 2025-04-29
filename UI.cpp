@@ -179,7 +179,7 @@ public:
                             gameCtrl    = SDL_GameControllerOpen(gameCtrlIdx);
 
                             memset(&gamePadData, 0, sizeof(gamePadData));
-                            auto fpgaCore = getFpgaCore();
+                            auto fpgaCore = FpgaCore::get();
                             if (fpgaCore)
                                 fpgaCore->gamepadReport(0, gamePadData);
                         }
@@ -192,7 +192,7 @@ public:
                             gameCtrlIdx = -1;
 
                             memset(&gamePadData, 0, sizeof(gamePadData));
-                            auto fpgaCore = getFpgaCore();
+                            auto fpgaCore = FpgaCore::get();
                             if (fpgaCore)
                                 fpgaCore->gamepadReport(0, gamePadData);
                         }
@@ -209,7 +209,7 @@ public:
                             case SDL_CONTROLLER_AXIS_TRIGGERRIGHT: gamePadData.rt = event.caxis.value / 128; break;
                         }
 
-                        auto fpgaCore = getFpgaCore();
+                        auto fpgaCore = FpgaCore::get();
                         if (fpgaCore)
                             fpgaCore->gamepadReport(0, gamePadData);
                         break;
@@ -219,7 +219,7 @@ public:
                         if (event.cbutton.button < 16) {
                             gamePadData.buttons = (gamePadData.buttons & ~(1 << event.cbutton.button)) | ((event.cbutton.state & 1) << event.cbutton.button);
 
-                            auto fpgaCore = getFpgaCore();
+                            auto fpgaCore = FpgaCore::get();
                             if (fpgaCore)
                                 fpgaCore->gamepadReport(0, gamePadData);
                         }
@@ -467,7 +467,7 @@ public:
                         (io.MouseDown[1] ? 2 : 0) |
                         (io.MouseDown[2] ? 4 : 0);
 
-                    getFpgaCore()->mouseReport((int)pos.x, (int)pos.y, buttonMask, (int)io.MouseWheel, true);
+                    FpgaCore::get()->mouseReport((int)pos.x, (int)pos.y, buttonMask, (int)io.MouseWheel, true);
                 }
             }
 
@@ -609,7 +609,7 @@ public:
                     update = true;
                 }
                 if (update) {
-                    getFpgaCore()->mouseReport((int)pos.x, (int)pos.y, buttonMask, (int)io.MouseWheel, true);
+                    FpgaCore::get()->mouseReport((int)pos.x, (int)pos.y, buttonMask, (int)io.MouseWheel, true);
                 }
             }
             allowTyping = ImGui::IsWindowFocused();

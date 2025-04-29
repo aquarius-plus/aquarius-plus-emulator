@@ -27,7 +27,6 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
 
     esp32
     esp32/FpgaCores
-    esp32/FpgaCores/AquariusPlus
     esp32/HID
     esp32/VFS
     esp32/USB
@@ -75,6 +74,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     esp32/VFS/SDCardVFS.cpp
     esp32/VFS/TcpVFS.cpp
     esp32/FpgaCores/AquariusPlus/CoreAquariusPlus.cpp
+    esp32/FpgaCores/Aquarius32/CoreAquarius32.cpp
     esp32/FpgaCores/FpgaCore.cpp
     esp32/DisplayOverlay/DisplayOverlay.cpp
     esp32/DisplayOverlay/Menu.cpp

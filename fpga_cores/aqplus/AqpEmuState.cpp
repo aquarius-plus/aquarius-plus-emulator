@@ -591,28 +591,28 @@ public:
                 ImGui::Text("$F3 BANK3: $%02X - page:%u%s%s", bankRegs[3], bankRegs[3] & 0x3F, bankRegs[3] & 0x80 ? " RO" : "", bankRegs[3] & 0x40 ? " OVL" : "");
             }
             if (ImGui::CollapsingHeader("Key buffer")) {
-                auto keyMode = Keyboard::instance()->getKeyMode();
-
                 {
                     uint8_t val = kbBuf.empty() ? 0 : kbBuf.front();
                     ImGui::Text("$FA KEYBUF: $%02X (%c)", val, val > 32 && val < 127 ? val : '.');
                 }
-                ImGui::Text(
-                    "   KEYMODE: $%02X %s%s%s\n",
-                    keyMode,
-                    (keyMode & 1) ? "[Enable]" : "",
-                    (keyMode & 2) ? "[ASCII]" : "[ScanCode]",
-                    (keyMode & 4) ? "[Repeat]" : "");
+
+                // auto keyMode = Keyboard::instance()->getKeyMode();
+                // ImGui::Text(
+                //     "   KEYMODE: $%02X %s%s%s\n",
+                //     keyMode,
+                //     (keyMode & 1) ? "[Enable]" : "",
+                //     (keyMode & 2) ? "[ASCII]" : "[ScanCode]",
+                //     (keyMode & 4) ? "[Repeat]" : "");
 
                 std::string str = "Key buffer: ";
 
                 for (unsigned i = 0; i < kbBuf.size(); i++) {
-                    if (keyMode & 2) {
-                        uint8_t val = kbBuf[i];
-                        str += fmtstr("%c", val > 32 && val < 127 ? val : '.');
-                    } else {
-                        str += fmtstr("%02X ", kbBuf[i]);
-                    }
+                    // if (keyMode & 2) {
+                    uint8_t val = kbBuf[i];
+                    str += fmtstr("%c", val > 32 && val < 127 ? val : '.');
+                    // } else {
+                    //     str += fmtstr("%02X ", kbBuf[i]);
+                    // }
                 }
                 ImGui::Text("%s", str.c_str());
             }
