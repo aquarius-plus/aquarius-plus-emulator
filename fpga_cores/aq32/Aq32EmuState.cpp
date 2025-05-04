@@ -603,6 +603,8 @@ public:
                     return (int)(uint8_t)((val >> ((off & 3) * 8)) & 0xFF);
                 };
                 memEdit.writeFn = [this](ImU8 *data, size_t off, ImU8 d) {
+                    memWrite(off, d | (d << 8) | (d << 16) | (d << 24), 0xFF << (off & 3) * 8);
+
                     // memWrite((uint16_t)off, d);
                 };
             } else {

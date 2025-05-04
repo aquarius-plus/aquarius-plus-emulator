@@ -215,9 +215,10 @@ public:
     uint8_t           repeat       = 0;
     unsigned          pressCounter = 0;
     SemaphoreHandle_t mutex;
-    KeyLayout         curLayout    = KeyLayout::US;
-    uint8_t           leds         = 0;
-    uint8_t           composeFirst = 0;
+    KeyLayout         curLayout         = KeyLayout::US;
+    uint8_t           leds              = 0;
+    uint8_t           composeFirst      = 0;
+    bool              enableCtrlMapping = true;
 
     KeyboardInt() {
         mutex         = xSemaphoreCreateRecursiveMutex();
@@ -330,12 +331,13 @@ public:
     }
 #endif
 
-    void reset() override {
+    void reset(bool _enableCtrlMapping) override {
         RecursiveMutexLock lock(mutex);
-        modifiers    = 0;
-        repeat       = 0;
-        pressCounter = 0;
-        composeFirst = 0;
+        modifiers         = 0;
+        repeat            = 0;
+        pressCounter      = 0;
+        composeFirst      = 0;
+        enableCtrlMapping = _enableCtrlMapping;
     }
 
     void handleScancode(unsigned scanCode, bool keyDown) override {
@@ -576,7 +578,7 @@ public:
                 ch = lut[scanCode - SCANCODE_F1];
             }
 
-            if ((modifiers & (ModLCtrl | ModRCtrl)) != 0) {
+            if (enableCtrlMapping && (modifiers & (ModLCtrl | ModRCtrl)) != 0) {
                 if (ch == '@') {
                     ch = 0x80;
                 } else if (ch >= 'a' && ch <= 'z') {

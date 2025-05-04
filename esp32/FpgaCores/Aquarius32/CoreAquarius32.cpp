@@ -48,6 +48,8 @@ public:
         memset(gamePads, 0, sizeof(gamePads));
         mutex = xSemaphoreCreateRecursiveMutex();
         applySettings();
+
+        Keyboard::instance()->reset(false);
     }
 
     virtual ~CoreAquarius32() {
