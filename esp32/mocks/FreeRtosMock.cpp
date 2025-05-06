@@ -29,9 +29,12 @@ BaseType_t xTaskCreate(
         pxTaskCode(pvParameters);
     });
 
-    if (pxCreatedTask)
+    if (pxCreatedTask) {
         *pxCreatedTask = tcb;
-
+    } else {
+        tcb->t.detach();
+        delete tcb;
+    }
     return pdTRUE;
 }
 

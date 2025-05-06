@@ -628,6 +628,8 @@ public:
         while (1) {
             if (listenSocket < 0) {
                 listenSocket = socket(AF_INET, SOCK_STREAM, 0);
+                if (listenSocket < 0)
+                    return;
 
                 const int enable = 1;
                 setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int));
