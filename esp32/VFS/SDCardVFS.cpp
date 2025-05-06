@@ -184,7 +184,7 @@ public:
         return (result < 0) ? mapErrNoResult() : 0;
     }
 
-    int lseek(int fd, int offset, int whence) {
+    int lseek(int fd, int offset, int whence) override {
         if (basePath.empty())
             return ERR_NO_DISK;
 

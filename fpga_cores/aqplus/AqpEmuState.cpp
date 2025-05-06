@@ -158,7 +158,7 @@ public:
         renderOverlay(pixels, pitch);
     }
 
-    void spiTx(const void *data, size_t length) {
+    void spiTx(const void *data, size_t length) override {
         EmuState::spiTx(data, length);
         if (!spiSelected || txBuf.empty())
             return;

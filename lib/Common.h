@@ -113,10 +113,10 @@ class RecursiveMutexLock {
 public:
     RecursiveMutexLock(SemaphoreHandle_t _mutex)
         : mutex(_mutex) {
-        // xSemaphoreTakeRecursive(mutex, portMAX_DELAY);
+        xSemaphoreTakeRecursive(mutex, portMAX_DELAY);
     }
     ~RecursiveMutexLock() {
-        // xSemaphoreGiveRecursive(mutex);
+        xSemaphoreGiveRecursive(mutex);
     }
 
 private:

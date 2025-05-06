@@ -328,7 +328,6 @@ void Z80Core::dbgWndCpuState(bool *p_open) {
                     }
                     tmpBreakpoint = z80ctx.PC + 2;
                 }
-                tmpBreakpoint = tmpBreakpoint;
                 if (tmpBreakpoint >= 0) {
                     emuMode = Em_Running;
                 } else {

@@ -105,7 +105,6 @@ private:
     std::deque<Z80TraceEntry> cpuTrace;
     bool                      traceEnable = false;
     int                       traceDepth  = 128;
-    bool                      prevHalted  = false;
 
     // Debug UI
     bool showCpuState        = false;
