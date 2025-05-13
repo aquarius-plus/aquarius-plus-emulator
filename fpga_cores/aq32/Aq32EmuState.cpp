@@ -16,6 +16,7 @@
 #ifdef GDB_ENABLE
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <thread>
 #endif
 
 #define IMGUI_DEFINE_MATH_OPERATORS
@@ -50,10 +51,29 @@ static std::string bufToHex(const void *buf, unsigned size) {
 
     return result;
 }
+static std::vector<uint8_t> decodeHex(const char *p, size_t size) {
+    std::vector<uint8_t> data;
 
-static int64_t getTimeUs() {
-    return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    for (unsigned i = 0; i < size; i++) {
+        uint8_t val = 0;
+
+        for (int j = 0; j < 2; j++) {
+            uint8_t ch = *(p++);
+            if (ch >= '0' && ch <= '9') {
+                val = (val << 4) | (ch - '0');
+            } else if (ch >= 'a' && ch <= 'f') {
+                val = (val << 4) | (ch - 'a' + 10);
+            } else if (ch >= 'A' && ch <= 'F') {
+                val = (val << 4) | (ch - 'A' + 10);
+            } else {
+                return {};
+            }
+        }
+        data.push_back(val);
+    }
+    return data;
 }
+
 #endif
 
 class Aq32EmuState : public EmuState {
@@ -68,17 +88,15 @@ public:
     DCBlock              dcBlockLeft;
     DCBlock              dcBlockRight;
     std::string          typeInStr;
-    std::mutex           mutexTypeInStr;
+    std::recursive_mutex mutex;
     uint32_t             mainRam[512 * 1024 / 4];
     uint32_t             bootRom[0x800 / 4];
+    int                  cur_line                 = -1;
+    int                  cur_line_steps_remaining = 0;
 
 #ifdef GDB_ENABLE
     // GDB interface
-    int         listenSocket = -1;
-    int         conn         = -1;
-    int         rxState      = 0;
-    std::string rxStr;
-    char        rxChecksum[3];
+    std::thread gdbThread;
 #endif
 
     enum EmuMode {
@@ -120,6 +138,12 @@ public:
         memcpy(bootRom, bootrom_bin, bootrom_bin_len);
         loadConfig();
         reset();
+
+#ifdef GDB_ENABLE
+        gdbThread = std::thread([this] {
+            this->gdbThreadFunc();
+        });
+#endif
     }
 
     virtual ~Aq32EmuState() {
@@ -167,11 +191,13 @@ public:
     }
 
     void getVideoSize(int &w, int &h) override {
+        std::lock_guard lock(mutex);
         w = 640;
         h = 480;
     }
 
     void getPixels(void *pixels, int pitch) override {
+        std::lock_guard lock(mutex);
         const uint16_t *fb = video.getFb();
 
         bool videoMode    = true;
@@ -189,6 +215,7 @@ public:
     }
 
     void spiTx(const void *data, size_t length) override {
+        std::lock_guard lock(mutex);
         EmuState::spiTx(data, length);
         if (!spiSelected || txBuf.empty())
             return;
@@ -211,11 +238,11 @@ public:
     }
 
     void pasteText(const std::string &str) override {
-        std::lock_guard lock(mutexTypeInStr);
+        std::lock_guard lock(mutex);
         typeInStr = str;
     }
     bool pasteIsDone() override {
-        std::lock_guard lock(mutexTypeInStr);
+        std::lock_guard lock(mutex);
         return typeInStr.empty();
     }
 
@@ -330,46 +357,57 @@ public:
         }
     }
 
-    void emulateFrame(int16_t *audioBuf, unsigned numSamples) override {
-        for (int line = 0; line < 262; line++) {
-            video.videoLine = line;
-            int count       = 0;
-            if (emuMode == Em_Running)
-                count = 8000000 / 60 / 262;
-            else if (emuMode == Em_Step)
-                count = 1;
+    bool emulateStep(void) {
+        bool end_of_frame = false;
+        if (emuMode == Em_Halted)
+            return true;
 
+        if (cur_line_steps_remaining <= 0) {
+            cur_line++;
+            cur_line_steps_remaining = 8000000 / 60 / 262;
+
+            if (cur_line == 262) {
+                cur_line     = 0;
+                end_of_frame = true;
+            }
+
+            video.drawLine(cur_line);
+            keyboardTypeIn();
+        }
+
+        cpu.emulate();
+        cur_line_steps_remaining--;
+
+        if (enableDebugger && enableBreakpoints) {
+            for (auto &bp : breakpoints) {
+                if (bp.enabled && bp.addr == cpu.pc) {
+                    emuMode = Em_Halted;
 #ifdef GDB_ENABLE
-            if (enableDebugger)
-                gdbProcess();
+                    gdbBreakpointHit();
 #endif
-
-            while (count--) {
-                cpu.emulate();
-
-                if (enableDebugger && enableBreakpoints) {
-                    for (auto &bp : breakpoints) {
-                        if (bp.enabled && bp.addr == cpu.pc) {
-                            emuMode = Em_Halted;
-#ifdef GDB_ENABLE
-                            gdbBreakpointHit();
-#endif
-                            return;
-                        }
-                    }
+                    break;
                 }
             }
+        }
+        if (emuMode == Em_Step)
+            emuMode = Em_Halted;
 
-            if (emuMode == Em_Step) {
-                emuMode = Em_Halted;
-            }
-            video.drawLine(line);
-            keyboardTypeIn();
+        return end_of_frame;
+    }
+
+    void emulateFrame(int16_t *audioBuf, unsigned numSamples) override {
+        std::lock_guard lock(mutex);
+
+        if (emuMode == Em_Halted) {
+            for (int line = 0; line < 262; line++)
+                video.drawLine(line);
+            return;
+        }
+        while (!emulateStep()) {
         }
     }
 
     void keyboardTypeIn() {
-        std::lock_guard lock(mutexTypeInStr);
         if (kbBuf.size() < kbBufSize && !typeInStr.empty()) {
             char ch = typeInStr.front();
             typeInStr.erase(typeInStr.begin());
@@ -378,6 +416,7 @@ public:
     }
 
     void dbgMenu() override {
+        std::lock_guard lock(mutex);
         if (!enableDebugger)
             return;
 
@@ -388,6 +427,7 @@ public:
     }
 
     void dbgWindows() override {
+        std::lock_guard lock(mutex);
         if (!enableDebugger)
             return;
 
@@ -621,65 +661,56 @@ public:
     }
 
 #ifdef GDB_ENABLE
-    void gdbProcess() {
-        bool gotCommand = false;
-        auto tStart     = getTimeUs();
+    int         conn = -1;
+    std::string rxStr;
+    int         rxState = 0;
+    char        rxChecksum[3];
+
+    void gdbHandleConnection() {
+        {
+            std::lock_guard lock(mutex);
+            reset();
+            emuMode = Em_Halted;
+            breakpoints.clear();
+        }
+        while (1) {
+            uint8_t buf[16384];
+            int     sz = recv(conn, buf, sizeof(buf), 0);
+            if (sz <= 0) {
+                close(conn);
+                conn = -1;
+                return;
+            }
+            gdbParseBuf(buf, sz);
+        }
+    }
+
+    void gdbThreadFunc() {
+        int listenSocket = socket(AF_INET, SOCK_STREAM, 0);
+        if (listenSocket < 0)
+            return;
+
+        const int enable = 1;
+        setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int));
+
+        fcntl(listenSocket, F_SETFL, fcntl(listenSocket, F_GETFL, 0) | O_NONBLOCK);
+
+        sockaddr_in serverAddress;
+        serverAddress.sin_family      = AF_INET;
+        serverAddress.sin_port        = htons(2331);
+        serverAddress.sin_addr.s_addr = INADDR_ANY;
+        bind(listenSocket, (struct sockaddr *)&serverAddress, sizeof(serverAddress));
+        listen(listenSocket, 5);
 
         while (1) {
-            if (listenSocket < 0) {
-                listenSocket = socket(AF_INET, SOCK_STREAM, 0);
-                if (listenSocket < 0)
-                    return;
+            conn = accept(listenSocket, nullptr, nullptr);
+            if (conn < 0)
+                continue;
 
-                const int enable = 1;
-                setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int));
+            gdbHandleConnection();
 
-                fcntl(listenSocket, F_SETFL, fcntl(listenSocket, F_GETFL, 0) | O_NONBLOCK);
-
-                sockaddr_in serverAddress;
-                serverAddress.sin_family      = AF_INET;
-                serverAddress.sin_port        = htons(2331);
-                serverAddress.sin_addr.s_addr = INADDR_ANY;
-                bind(listenSocket, (struct sockaddr *)&serverAddress, sizeof(serverAddress));
-                listen(listenSocket, 5);
-            }
-
-            if (conn < 0) {
-                conn = accept(listenSocket, nullptr, nullptr);
-                if (conn < 0)
-                    return;
-
-                fcntl(conn, F_SETFL, fcntl(conn, F_GETFL, 0) | O_NONBLOCK);
-                // dprintf("Got connection!\n");
-
-                reset();
-                emuMode = Em_Halted;
-                breakpoints.clear();
-            }
-
-            if (conn >= 0) {
-                uint8_t buf[512];
-                int     sz = recv(conn, buf, sizeof(buf), 0);
-                if (sz <= 0) {
-                    if (sz == -1 && errno == EAGAIN) {
-                        // No data received
-                        if (emuMode != Em_Running) {
-                            if (gotCommand && (getTimeUs() - tStart) < 1000000)
-                                continue;
-                        }
-                        return;
-                    }
-
-                    close(conn);
-                    conn = -1;
-                    // dprintf("Connection closed.\n");
-                    exit(0);
-                    return;
-                }
-
-                gotCommand = true;
-                gdbParseBuf(buf, sz);
-            }
+            // fcntl(conn, F_SETFL, fcntl(conn, F_GETFL, 0) | O_NONBLOCK);
+            // dprintf("Got connection!\n");
         }
     }
 
@@ -690,8 +721,10 @@ public:
             if (ch == 3) {
                 // CTRL-C
                 // dprintf("Halting\n");
-                emuMode = Em_Halted;
-
+                {
+                    std::lock_guard lock(mutex);
+                    emuMode = Em_Halted;
+                }
                 send(conn, "+", 1, 0);
                 // last signal
                 gdbSendStopReply();
@@ -741,7 +774,7 @@ public:
 
     std::string gdbReadMemory(uintptr_t addr, size_t size) {
         // dprintf("Read memory %08lX (size:%08lX)\n", addr, size);
-
+        std::lock_guard      lock(mutex);
         std::vector<uint8_t> respData;
 
         while (size) {
@@ -782,6 +815,8 @@ public:
     }
 
     void gdbWriteMemory(uintptr_t addr, std::vector<uint8_t> data) {
+        std::lock_guard lock(mutex);
+
         if (addr >= BASE_MAINRAM && addr < (BASE_MAINRAM + sizeof(mainRam))) {
             addr -= BASE_MAINRAM;
 
@@ -797,7 +832,7 @@ public:
                 printf("%02X ", val);
             }
             printf("\n");
-            exit(1);
+            // exit(1);
         }
     }
 
@@ -835,11 +870,52 @@ public:
         } else if (cmd == "g") {
             // read registers
             uint32_t regs[33];
-            for (int i = 0; i < 32; i++) {
-                regs[i] = cpu.regs[i];
+            {
+                std::lock_guard lock(mutex);
+                for (int i = 0; i < 32; i++) {
+                    regs[i] = cpu.regs[i];
+                }
+                regs[32] = cpu.pc;
             }
-            regs[32] = cpu.pc;
             gdbSendResponse(bufToHex(regs, sizeof(regs)));
+
+        } else if (cmd[0] == 'G') {
+            auto regBuf = decodeHex(&cmd[1], (cmd.size() - 1) / 2);
+
+            uint32_t *regVals = reinterpret_cast<uint32_t *>(regBuf.data());
+            {
+                std::lock_guard lock(mutex);
+                for (unsigned i = 0; i < regBuf.size() / 4; i++) {
+                    printf("P: Reg %u=%08x\n", i, regVals[i]);
+
+                    if (i > 0 && i < 32) {
+                        cpu.regs[i] = regVals[i];
+                    } else if (i == 32) {
+                        cpu.pc = regVals[i];
+                    }
+                }
+            }
+
+        } else if (cmd[0] == 'P' && cmd.size() == 12 && cmd[3] == '=') {
+            // Pxx=xxxxxxxx
+            auto regBuf   = decodeHex(&cmd[1], 1);
+            auto valueBuf = decodeHex(&cmd[4], 4);
+            if (regBuf.empty() || valueBuf.empty())
+                return;
+
+            unsigned regIdx = regBuf[0];
+            uint32_t val    = *reinterpret_cast<uint32_t *>(valueBuf.data());
+            // printf("P: Reg %u=%08x\n", regIdx, val);
+
+            {
+                std::lock_guard lock(mutex);
+                if (regIdx > 0 && regIdx < 32) {
+                    cpu.regs[regIdx] = val;
+                } else if (regIdx == 32) {
+                    cpu.pc = val;
+                }
+            }
+            gdbSendResponse("OK");
 
         } else if (cmd[0] == 'm') {
             char    *endptr;
@@ -856,51 +932,40 @@ public:
                 unsigned size = strtoul(endptr + 1, &endptr, 16);
 
                 if (endptr[0] == ':') {
-                    std::vector<uint8_t> data;
-                    const char          *p = endptr + 1;
-
-                    for (unsigned i = 0; i < size; i++) {
-                        uint8_t val = 0;
-
-                        for (int j = 0; j < 2; j++) {
-                            uint8_t ch = *(p++);
-                            if (ch >= '0' && ch <= '9') {
-                                val = (val << 4) | (ch - '0');
-                            } else if (ch >= 'a' && ch <= 'f') {
-                                val = (val << 4) | (ch - 'a' + 10);
-                            } else if (ch >= 'A' && ch <= 'F') {
-                                val = (val << 4) | (ch - 'A' + 10);
-                            } else {
-                                return;
-                            }
-                        }
-
-                        data.push_back(val);
-                    }
-
+                    auto data = decodeHex(endptr + 1, size);
+                    if (data.empty())
+                        return;
                     gdbWriteMemory(addr, data);
                     gdbSendResponse("OK");
                 }
             }
+
+            // } else if (cmd[0] == 'X') {
+
+        } else if (cmd[0] == 'H') {
+            gdbSendResponse("OK");
 
         } else if (cmd.substr(0, 3) == "Z0," || cmd.substr(0, 3) == "Z1,") {
             // Add breakpoint
             uint32_t addr = strtoul(cmd.c_str() + 3, nullptr, 16);
             // dprintf("Add breakpoint %08X\n", addr);
 
-            enableBreakpoints = true;
-            for (auto &bp : breakpoints) {
-                if (bp.addr == addr) {
-                    bp.enabled = true;
-                    gdbSendResponse("OK");
-                    return;
+            {
+                std::lock_guard lock(mutex);
+                enableBreakpoints = true;
+                for (auto &bp : breakpoints) {
+                    if (bp.addr == addr) {
+                        bp.enabled = true;
+                        gdbSendResponse("OK");
+                        return;
+                    }
                 }
-            }
 
-            Breakpoint bp;
-            bp.addr    = addr;
-            bp.enabled = true;
-            breakpoints.push_back(bp);
+                Breakpoint bp;
+                bp.addr    = addr;
+                bp.enabled = true;
+                breakpoints.push_back(bp);
+            }
             gdbSendResponse("OK");
 
         } else if (cmd.substr(0, 3) == "z0," || cmd.substr(0, 3) == "z1,") {
@@ -908,28 +973,39 @@ public:
             uint32_t addr = strtoul(cmd.c_str() + 3, nullptr, 16);
             // dprintf("Remove breakpoint %08X\n", addr);
 
-            auto it = breakpoints.begin();
-            while (it != breakpoints.end()) {
-                if (it->addr == addr) {
-                    it = breakpoints.erase(it);
-                } else {
-                    ++it;
+            {
+                std::lock_guard lock(mutex);
+                auto            it = breakpoints.begin();
+                while (it != breakpoints.end()) {
+                    if (it->addr == addr) {
+                        it = breakpoints.erase(it);
+                    } else {
+                        ++it;
+                    }
                 }
             }
-
             gdbSendResponse("OK");
 
         } else if (cmd == "c") {
             // dprintf("Continue\n");
+            std::lock_guard lock(mutex);
             emuMode = Em_Running;
 
         } else if (cmd == "s") {
             // Step
-            // dprintf("Step\n");
-            cpu.emulate();
+            {
+                std::lock_guard lock(mutex);
+                emuMode = Em_Step;
+                emulateStep();
+            }
             gdbSendStopReply();
 
+        } else if (cmd.substr(0, 11) == "qSupported:") {
+            gdbSendResponse("PacketSize=4000");
+
         } else {
+            printf("Unhandled GDB cmd=%s\n", cmd.c_str());
+
             // Unsupported command
             gdbSendResponse("");
         }
