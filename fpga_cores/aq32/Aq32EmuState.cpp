@@ -289,15 +289,16 @@ public:
             }
         } else if (addr >= BASE_PALETTE && addr < (BASE_PALETTE + sizeof(video.videoPalette))) {
             // Palette (16b)
-            return video.videoPalette[(addr & (sizeof(video.videoPalette) - 1)) / 2];
+            uint16_t val = video.videoPalette[(addr & (sizeof(video.videoPalette) - 1)) / 2];
+            return val | (val << 16);
         } else if (addr >= BASE_CHRAM && addr < (BASE_CHRAM + sizeof(video.charRam))) {
             // Character RAM (8b)
-            return video.charRam[addr & (sizeof(video.charRam) - 1)];
+            uint8_t val = video.charRam[addr & (sizeof(video.charRam) - 1)];
+            return val | (val << 8) | (val << 16) | (val << 24);
         } else if (addr >= BASE_TEXTRAM && addr < (BASE_TEXTRAM + sizeof(video.textRam))) {
             // Text RAM (8b/16b)
             uint32_t val = video.textRam[(addr & (sizeof(video.textRam) - 1)) / 2];
-            val |= val << 16;
-            return val;
+            return val | (val << 16);
         } else if (addr >= BASE_VRAM && addr < (BASE_VRAM + sizeof(video.videoRam))) {
             // Video RAM (8/16/32b)
             return reinterpret_cast<uint32_t *>(video.videoRam)[addr & (sizeof(video.videoRam) - 1)];
