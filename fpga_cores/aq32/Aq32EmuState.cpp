@@ -17,6 +17,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <thread>
+#include <netinet/tcp.h>
 #endif
 
 #define IMGUI_DEFINE_MATH_OPERATORS
@@ -707,6 +708,9 @@ public:
             conn = accept(listenSocket, nullptr, nullptr);
             if (conn < 0)
                 continue;
+
+            int val = 1;
+            setsockopt(conn, IPPROTO_TCP, TCP_NODELAY, &val, sizeof(val));
 
             gdbHandleConnection();
 
