@@ -8,12 +8,10 @@ public:
         VCTRL_TEXT_ENABLE         = (1 << 0),
         VCTRL_GFXMODE_OFF         = (0 << 1),
         VCTRL_GFXMODE_TILEMAP     = (1 << 1),
-        VCTRL_GFXMODE_BITMAP      = (2 << 1),
         VCTRL_GFXMODE_BITMAP_4BPP = (3 << 1),
         VCTRL_GFXMODE_MASK        = (3 << 1),
         VCTRL_SPRITES_ENABLE      = (1 << 3),
         VCTRL_TEXT_PRIORITY       = (1 << 4),
-        VCTRL_REMAP_BORDER_CHAR   = (1 << 5),
         VCTRL_80_COLUMNS          = (1 << 6),
         VCTRL_TRAM_PAGE           = (1 << 7),
     };

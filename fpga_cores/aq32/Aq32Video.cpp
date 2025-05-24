@@ -25,9 +25,8 @@ void Aq32Video::drawLine(int line) {
     // Render text
     uint8_t lineText[1024];
     {
-        bool mode80      = (videoCtrl & VCTRL_80_COLUMNS) != 0;
-        bool tramPage    = (videoCtrl & VCTRL_TRAM_PAGE) != 0;
-        bool remapBorder = (videoCtrl & VCTRL_REMAP_BORDER_CHAR) != 0;
+        bool mode80   = (videoCtrl & VCTRL_80_COLUMNS) != 0;
+        bool tramPage = (videoCtrl & VCTRL_TRAM_PAGE) != 0;
 
         unsigned idx = 1024 - 32;
         for (int i = 0; i < activeWidth; i++) {
@@ -44,11 +43,7 @@ void Aq32Video::drawLine(int line) {
                     addr       = row * 40 + column;
                 }
             } else {
-                if (remapBorder) {
-                    addr = mode80 ? 0x7FF : 0x3FF;
-                } else {
-                    addr = 0;
-                }
+                addr = 0x7FF;
             }
             if (!mode80) {
                 addr = (addr & 0x3FF) | (tramPage ? 0x400 : 0);
@@ -69,26 +64,12 @@ void Aq32Video::drawLine(int line) {
     if (vActive) {
         int bmline = line - 16;
         switch (videoCtrl & VCTRL_GFXMODE_MASK) {
-            case VCTRL_GFXMODE_BITMAP: {
-                // Bitmap mode 1bpp
-                for (int i = 0; i < 320; i++) {
-                    int     row    = bmline / 8;
-                    int     column = i / 8;
-                    uint8_t col    = videoRam[0x2000 + row * 40 + column];
-                    uint8_t bm     = videoRam[0x0000 + bmline * 40 + column];
-                    uint8_t color  = (bm & (1 << (7 - (i & 7)))) ? (col >> 4) : (col & 0xF);
-
-                    lineGfx[i] = (1 << 4) | color;
-                }
-                break;
-            }
-
             case VCTRL_GFXMODE_BITMAP_4BPP: {
                 // Bitmap mode 4bpp
-                for (int i = 0; i < 0; i++) {
-                    uint8_t col        = videoRam[bmline * 80 + i];
-                    lineGfx[i * 4 + 0] = (1 << 4) | (col >> 4);
-                    lineGfx[i * 4 + 1] = (1 << 4) | (col & 0xF);
+                for (int i = 0; i < 160; i++) {
+                    uint8_t col        = videoRam[bmline * 160 + i];
+                    lineGfx[i * 2 + 0] = (1 << 4) | (col >> 4);
+                    lineGfx[i * 2 + 1] = (1 << 4) | (col & 0xF);
                 }
                 break;
             }
@@ -270,7 +251,6 @@ void Aq32Video::dbgDrawIoRegs() {
     ImGui::Text("  GFXMODE           : %u (%s)", (videoCtrl >> 1) & 3, gfxMode[(videoCtrl >> 1) & 3]);
     ImGui::Text("  SPRITES_ENABLE    : %u", (videoCtrl >> 3) & 1);
     ImGui::Text("  TEXT_PRIORITY     : %u", (videoCtrl >> 4) & 1);
-    ImGui::Text("  REMAP_BORDER_CHAR : %u", (videoCtrl >> 5) & 1);
     ImGui::Text("  80_COLUMNS        : %u", (videoCtrl >> 6) & 1);
     ImGui::Text("  TRAM_PAGE         : %u", (videoCtrl >> 7) & 1);
     ImGui::Text("VSCRX   : %u", videoScrX);

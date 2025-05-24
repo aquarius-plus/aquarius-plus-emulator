@@ -98,6 +98,7 @@ public:
 #ifdef GDB_ENABLE
     // GDB interface
     std::thread gdbThread;
+    bool        stopping = false;
 #endif
 
     enum EmuMode {
@@ -149,6 +150,10 @@ public:
 
     virtual ~Aq32EmuState() {
         saveConfig();
+#ifdef GDB_ENABLE
+        stopping = true;
+        gdbThread.join();
+#endif
     }
 
     void reset(bool cold = false) override {
@@ -704,7 +709,7 @@ public:
         bind(listenSocket, (struct sockaddr *)&serverAddress, sizeof(serverAddress));
         listen(listenSocket, 5);
 
-        while (1) {
+        while (!stopping) {
             conn = accept(listenSocket, nullptr, nullptr);
             if (conn < 0)
                 continue;
