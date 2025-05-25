@@ -26,21 +26,22 @@
 #define HCYCLES_PER_LINE   (455)
 #define HCYCLES_PER_SAMPLE (162)
 
-#define BASE_BOOTROM 0x00000
-#define REG_ESPCTRL  0x02000
-#define REG_ESPDATA  0x02004
-#define REG_VCTRL    0x02008
-#define REG_VSCRX    0x0200C
-#define REG_VSCRY    0x02010
-#define REG_VLINE    0x02014
-#define REG_VIRQLINE 0x02018
-#define REG_KEYBUF   0x0201C
-#define BASE_SPRATTR 0x03000
-#define BASE_PALETTE 0x04000
-#define BASE_CHRAM   0x05000
-#define BASE_TEXTRAM 0x06000
-#define BASE_VRAM    0x08000
-#define BASE_MAINRAM 0x80000
+#define BASE_BOOTROM  0x00000
+#define REG_ESPCTRL   0x02000
+#define REG_ESPDATA   0x02004
+#define REG_VCTRL     0x02008
+#define REG_VSCRX     0x0200C
+#define REG_VSCRY     0x02010
+#define REG_VLINE     0x02014
+#define REG_VIRQLINE  0x02018
+#define REG_KEYBUF    0x0201C
+#define BASE_SPRATTR  0x03000
+#define BASE_PALETTE  0x04000
+#define BASE_CHRAM    0x05000
+#define BASE_TEXTRAM  0x06000
+#define BASE_VRAM     0x08000
+#define BASE_VRAM4BIT 0x10000
+#define BASE_MAINRAM  0x80000
 
 #ifdef GDB_ENABLE
 static std::string bufToHex(const void *buf, unsigned size) {
@@ -307,7 +308,16 @@ public:
             return val | (val << 16);
         } else if (addr >= BASE_VRAM && addr < (BASE_VRAM + sizeof(video.videoRam))) {
             // Video RAM (8/16/32b)
-            return reinterpret_cast<uint32_t *>(video.videoRam)[addr & (sizeof(video.videoRam) - 1)];
+            return reinterpret_cast<uint32_t *>(video.videoRam)[(addr & (sizeof(video.videoRam) - 1)) / 4];
+        } else if (addr >= BASE_VRAM4BIT && addr < (BASE_VRAM4BIT + 2 * sizeof(video.videoRam))) {
+            // Video RAM (8/16/32b)
+            uint16_t val16 = reinterpret_cast<uint16_t *>(video.videoRam)[(addr & (2 * sizeof(video.videoRam) - 1)) / 4];
+            uint32_t val32 = ((val16 & 0xF000) << 12) |
+                             ((val16 & 0x0F00) << 8) |
+                             ((val16 & 0x00F0) << 4) |
+                             (val16 & 0x000F);
+            return val32;
+
         } else if (addr >= BASE_MAINRAM && addr < (BASE_MAINRAM + sizeof(mainRam))) {
             return mainRam[(addr & (sizeof(mainRam) - 1)) / 4];
         }
@@ -356,8 +366,31 @@ public:
             *p           = (*p & ~msk) | (val & msk);
         } else if (addr >= BASE_VRAM && addr < (BASE_VRAM + sizeof(video.videoRam))) {
             // Video RAM (8/16/32b)
-            auto p = reinterpret_cast<uint32_t *>(&video.videoRam[addr & (sizeof(video.videoRam) - 1)]);
+            auto p = &reinterpret_cast<uint32_t *>(video.videoRam)[(addr & (sizeof(video.videoRam) - 1)) / 4];
             *p     = (*p & ~mask) | (val & mask);
+        } else if (addr >= BASE_VRAM4BIT && addr < (BASE_VRAM4BIT + 2 * sizeof(video.videoRam))) {
+            uint16_t *p     = &reinterpret_cast<uint16_t *>(video.videoRam)[(addr & (2 * sizeof(video.videoRam) - 1)) / 4];
+            uint16_t  val16 = *p;
+            uint32_t  val32 =
+                ((val16 & 0xF000) << 12) |
+                ((val16 & 0x0F00) << 8) |
+                ((val16 & 0x00F0) << 4) |
+                (val16 & 0x000F);
+
+            uint32_t msk =
+                ((mask & 0xFF000000) >> 8) |
+                ((mask & 0x00FF0000) << 8) |
+                ((mask & 0x0000FF00) >> 8) |
+                ((mask & 0x000000FF) << 8);
+
+            val32 = (val32 & ~msk) | (val & msk);
+            val16 =
+                ((val32 & 0x0F000000) >> 12) |
+                ((val32 & 0x000F0000) >> 8) |
+                ((val32 & 0x00000F00) >> 4) |
+                (val32 & 0x0000000F);
+            *p = val16;
+
         } else if (addr >= BASE_MAINRAM && addr < (BASE_MAINRAM + sizeof(mainRam))) {
             auto p = &mainRam[(addr & (sizeof(mainRam) - 1)) / 4];
             *p     = (*p & ~mask) | (val & mask);
