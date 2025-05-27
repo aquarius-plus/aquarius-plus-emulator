@@ -43,6 +43,8 @@
 #define BASE_VRAM4BIT 0x10000
 #define BASE_MAINRAM  0x80000
 
+// #define ALLOW_UNALIGNED
+
 #ifdef GDB_ENABLE
 static std::string bufToHex(const void *buf, unsigned size) {
     std::string result;
@@ -133,9 +135,13 @@ public:
         coreVersionMinor = 1;
         memcpy(coreName, "Aquarius32      ", sizeof(coreName));
 
-        cpu.dataWrite = [this](uint32_t vaddr, uint32_t val, uint32_t mask) { memWrite(vaddr, val, mask); };
-        cpu.dataRead  = [this](uint32_t vaddr) { auto val = memRead(vaddr); if (val < 0) val = 0; return (uint32_t)val; };
-        cpu.instrRead = [this](uint32_t vaddr) { auto val = memRead(vaddr); if (val < 0) val = 0; return (uint32_t)val; };
+        cpu.dataWrite8  = [this](uint32_t addr, uint8_t val) { _memWrite8(addr, val); };
+        cpu.dataWrite16 = [this](uint32_t addr, uint16_t val) { _memWrite16(addr, val); };
+        cpu.dataWrite32 = [this](uint32_t addr, uint32_t val) { _memWrite32(addr, val); };
+        cpu.dataRead8   = [this](uint32_t addr) { return _memRead8(addr); };
+        cpu.dataRead16  = [this](uint32_t addr) { return _memRead16(addr); };
+        cpu.dataRead32  = [this](uint32_t addr) { return _memRead32(addr); };
+        cpu.instrRead   = [this](uint32_t addr) { return (uint32_t)memRead(addr); };
 
         memset(keybMatrix, 0xFF, sizeof(keybMatrix));
         memcpy(bootRom, bootrom_bin, bootrom_bin_len);
@@ -253,6 +259,90 @@ public:
         return typeInStr.empty();
     }
 
+    uint8_t _memRead8(uint32_t addr) {
+        return (memRead(addr) >> ((addr & 3) * 8)) & 0xFF;
+    }
+    uint16_t _memRead16(uint32_t addr) {
+        unsigned offset = addr & 3;
+        addr &= ~1;
+#ifndef ALLOW_UNALIGNED
+        offset &= ~1;
+#endif
+        switch (offset) {
+            default:
+            case 0: return (memRead(addr) >> 0) & 0xFFFF;
+            case 1: return (memRead(addr) >> 8) & 0xFFFF;
+            case 2: return (memRead(addr) >> 16) & 0xFFFF;
+            case 3: return ((memRead(addr) >> 24) & 0xFF) | ((memRead(addr + 4) << 8) & 0xFF00);
+        }
+    }
+    uint32_t _memRead32(uint32_t addr) {
+        unsigned offset = addr & 3;
+        addr &= ~3;
+#ifndef ALLOW_UNALIGNED
+        offset = 0;
+#endif
+        switch (offset) {
+            default:
+            case 0: return memRead(addr + 0);
+            case 1: return ((memRead(addr + 0) & 0xFFFFFF00) >> 8) | ((memRead(addr + 4) & 0x000000FF) << 24);
+            case 2: return ((memRead(addr + 0) & 0xFFFF0000) >> 16) | ((memRead(addr + 4) & 0x0000FFFF) << 16);
+            case 3: return ((memRead(addr + 0) & 0xFF000000) >> 24) | ((memRead(addr + 4) & 0x00FFFFFF) << 8);
+        }
+    }
+
+    void _memWrite8(uint32_t addr, uint8_t val) {
+        memWrite(addr, (val << 24) | (val << 16) | (val << 8) | val, 0xFF << ((addr & 3) * 8));
+    }
+    void _memWrite16(uint32_t addr, uint16_t val) {
+        unsigned offset = addr & 3;
+        addr &= ~3;
+#ifndef ALLOW_UNALIGNED
+        offset &= ~1;
+#endif
+        switch (offset) {
+            default:
+            case 0:
+                memWrite(addr + 0, val, 0x0000FFFF);
+                break;
+            case 1:
+                memWrite(addr + 0, val << 8, 0x00FFFF00);
+                break;
+            case 2:
+                memWrite(addr + 2, val << 16, 0xFFFF0000);
+                break;
+            case 3:
+                memWrite(addr + 2, val << 24, 0xFF000000);
+                memWrite(addr + 4, val >> 8, 0x000000FF);
+                break;
+        }
+    }
+    void _memWrite32(uint32_t addr, uint32_t val) {
+        unsigned offset = addr & 3;
+        addr &= ~3;
+#ifndef ALLOW_UNALIGNED
+        offset = 0;
+#endif
+        switch (offset) {
+            default:
+            case 0:
+                memWrite(addr + 0, val, 0xFFFFFFFF);
+                break;
+            case 1:
+                memWrite(addr + 0, val << 8, 0xFFFFFF00);
+                memWrite(addr + 4, val >> 24, 0x000000FF);
+                break;
+            case 2:
+                memWrite(addr + 0, val << 16, 0xFFFF0000);
+                memWrite(addr + 4, val >> 16, 0x0000FFFF);
+                break;
+            case 3:
+                memWrite(addr + 0, val << 24, 0xFF000000);
+                memWrite(addr + 4, val >> 8, 0x00FFFFFF);
+                break;
+        }
+    }
+
     int64_t memRead(uint32_t addr, bool allow_side_effect = true) {
         if (/* addr >= BASE_BOOTROM && */ addr < (BASE_BOOTROM + sizeof(bootRom))) {
             return bootRom[(addr & 0x7FF) / 4];
@@ -355,15 +445,17 @@ public:
             }
         } else if (addr >= BASE_PALETTE && addr < (BASE_PALETTE + sizeof(video.videoPalette))) {
             // Palette (16b)
-            video.videoPalette[(addr & (sizeof(video.videoPalette) - 1)) / 2] = val & 0xFFF;
+            video.videoPalette[(addr & (sizeof(video.videoPalette) - 1)) / 2] = ((val >> 16) | (val & 0xFFFF)) & 0xFFF;
         } else if (addr >= BASE_CHRAM && addr < (BASE_CHRAM + sizeof(video.charRam))) {
             // Character RAM (8b)
             video.charRam[addr & (sizeof(video.charRam) - 1)] = val & 0xFF;
         } else if (addr >= BASE_TEXTRAM && addr < (BASE_TEXTRAM + sizeof(video.textRam))) {
             // Text RAM (8b/16b)
             uint16_t msk = (mask >> 16) | (mask & 0xFFFF);
-            auto     p   = &video.textRam[(addr & (sizeof(video.textRam) - 1)) / 2];
-            *p           = (*p & ~msk) | (val & msk);
+            uint16_t v   = (val >> 16) | (val & 0xFFFF);
+
+            auto p = &video.textRam[(addr & (sizeof(video.textRam) - 1)) / 2];
+            *p     = (*p & ~msk) | (v & msk);
         } else if (addr >= BASE_VRAM && addr < (BASE_VRAM + sizeof(video.videoRam))) {
             // Video RAM (8/16/32b)
             auto p = &reinterpret_cast<uint32_t *>(video.videoRam)[(addr & (sizeof(video.videoRam) - 1)) / 4];

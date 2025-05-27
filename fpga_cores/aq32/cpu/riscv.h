@@ -45,16 +45,13 @@ struct riscv {
     void pendInterrupt(uint32_t mask) { mip |= mask; }
     void clearInterrupt(uint32_t mask) { mip &= ~mask; }
 
-    std::function<void(uint32_t vaddr, uint32_t val, uint32_t mask)> dataWrite;
-    std::function<uint32_t(uint32_t vaddr)>                          dataRead;
-    std::function<uint32_t(uint32_t vaddr)>                          instrRead;
-
-    inline uint32_t mem_read32(uint32_t addr) { return dataRead(addr); }
-    inline uint16_t mem_read16(uint32_t addr) { return (dataRead(addr) >> ((addr & 2) * 8)) & 0xFFFF; }
-    inline uint8_t  mem_read8(uint32_t addr) { return (dataRead(addr) >> ((addr & 3) * 8)) & 0xFF; }
-    inline void     mem_write32(uint32_t addr, uint32_t val) { dataWrite(addr, val, 0xFFFFFFFF); }
-    inline void     mem_write16(uint32_t addr, uint16_t val) { dataWrite(addr, (val << 16) | val, 0xFFFF << ((addr & 2) * 8)); }
-    inline void     mem_write8(uint32_t addr, uint8_t val) { dataWrite(addr, (val << 24) | (val << 16) | (val << 8) | val, 0xFF << ((addr & 3) * 8)); }
+    std::function<void(uint32_t vaddr, uint8_t val)>  dataWrite8;
+    std::function<void(uint32_t vaddr, uint16_t val)> dataWrite16;
+    std::function<void(uint32_t vaddr, uint32_t val)> dataWrite32;
+    std::function<uint8_t(uint32_t vaddr)>            dataRead8;
+    std::function<uint16_t(uint32_t vaddr)>           dataRead16;
+    std::function<uint32_t(uint32_t vaddr)>           dataRead32;
+    std::function<uint32_t(uint32_t vaddr)>           instrRead;
 };
 
 std::string instrToString(uint32_t instruction, uint32_t pc);

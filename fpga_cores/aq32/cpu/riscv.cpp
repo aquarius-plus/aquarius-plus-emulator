@@ -79,11 +79,11 @@ void riscv::emulate() {
                 uint32_t addr = rs1 + imm;
 
                 switch ((instr >> 12) & 0x7) {
-                    case 0b000: rd_val = (int8_t)mem_read8(addr); break;   // LB
-                    case 0b001: rd_val = (int16_t)mem_read16(addr); break; // LH
-                    case 0b010: rd_val = mem_read32(addr); break;          // LW
-                    case 0b100: rd_val = mem_read8(addr); break;           // LBU
-                    case 0b101: rd_val = mem_read16(addr); break;          // LHU
+                    case 0b000: rd_val = (int8_t)dataRead8(addr); break;   // LB
+                    case 0b001: rd_val = (int16_t)dataRead16(addr); break; // LH
+                    case 0b010: rd_val = dataRead32(addr); break;          // LW
+                    case 0b100: rd_val = dataRead8(addr); break;           // LBU
+                    case 0b101: rd_val = dataRead16(addr); break;          // LHU
                     default: this->trap = TRAP_INSTR_ILLEGAL; break;
                 }
                 break;
@@ -100,9 +100,9 @@ void riscv::emulate() {
                 rd_idx        = 0;
 
                 switch ((instr >> 12) & 0x7) {
-                    case 0b000: mem_write8(addr, rs2); break;  // SB
-                    case 0b001: mem_write16(addr, rs2); break; // SH
-                    case 0b010: mem_write32(addr, rs2); break; // SW
+                    case 0b000: dataWrite8(addr, rs2); break;  // SB
+                    case 0b001: dataWrite16(addr, rs2); break; // SH
+                    case 0b010: dataWrite32(addr, rs2); break; // SW
                     default: this->trap = TRAP_INSTR_ILLEGAL; break;
                 }
                 break;
