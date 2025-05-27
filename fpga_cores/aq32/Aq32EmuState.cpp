@@ -404,7 +404,7 @@ public:
 
         if (cur_line_steps_remaining <= 0) {
             cur_line++;
-            cur_line_steps_remaining = 8000000 / 60 / 262;
+            cur_line_steps_remaining = 6500000 / 60 / 262;
 
             if (cur_line == 262) {
                 cur_line     = 0;
