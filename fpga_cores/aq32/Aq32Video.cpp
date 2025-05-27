@@ -25,8 +25,7 @@ void Aq32Video::drawLine(int line) {
     // Render text
     uint8_t lineText[1024];
     {
-        bool mode80   = (videoCtrl & VCTRL_80_COLUMNS) != 0;
-        bool tramPage = (videoCtrl & VCTRL_TRAM_PAGE) != 0;
+        bool mode80 = (videoCtrl & VCTRL_TEXT_MODE80) != 0;
 
         unsigned idx = 1024 - 32;
         for (int i = 0; i < activeWidth; i++) {
@@ -46,7 +45,7 @@ void Aq32Video::drawLine(int line) {
                 addr = 0x7FF;
             }
             if (!mode80) {
-                addr = (addr & 0x3FF) | (tramPage ? 0x400 : 0);
+                addr = (addr & 0x3FF);
             }
 
             uint16_t val    = textRam[addr];
@@ -63,18 +62,20 @@ void Aq32Video::drawLine(int line) {
     uint8_t lineGfx[512];
     if (vActive) {
         int bmline = line - 16;
-        switch (videoCtrl & VCTRL_GFXMODE_MASK) {
-            case VCTRL_GFXMODE_BITMAP_4BPP: {
+        if ((videoCtrl & VCTRL_GFX_EN) == 0) {
+            for (int i = 0; i < 320; i++) {
+                lineGfx[i] = 0;
+            }
+        } else {
+            if (!(videoCtrl & VCTRL_GFX_TILEMODE)) {
                 // Bitmap mode 4bpp
                 for (int i = 0; i < 160; i++) {
                     uint8_t col        = videoRam[bmline * 160 + i];
                     lineGfx[i * 2 + 0] = (1 << 4) | (col >> 4);
                     lineGfx[i * 2 + 1] = (1 << 4) | (col & 0xF);
                 }
-                break;
-            }
 
-            case VCTRL_GFXMODE_TILEMAP: {
+            } else {
                 // Tile mode
                 unsigned idx      = (-(videoScrX & 7)) & 511;
                 unsigned tileLine = (bmline + videoScrY) & 255;
@@ -127,14 +128,6 @@ void Aq32Video::drawLine(int line) {
                         }
                     }
                 }
-                break;
-            }
-
-            default: {
-                for (int i = 0; i < 320; i++) {
-                    lineGfx[i] = 0;
-                }
-                break;
             }
         }
 
@@ -218,8 +211,8 @@ void Aq32Video::drawLine(int line) {
 
         for (int i = 0; i < activeWidth; i++) {
             bool active       = idx < 640 && vActive;
-            bool textPriority = (videoCtrl & VCTRL_TEXT_PRIORITY) != 0;
-            bool textEnable   = (videoCtrl & VCTRL_TEXT_ENABLE) != 0;
+            bool textPriority = (videoCtrl & VCTRL_TEXT_PRIO) != 0;
+            bool textEnable   = (videoCtrl & VCTRL_TEXT_EN) != 0;
 
             uint8_t colIdx = 0;
             if (!active) {

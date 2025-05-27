@@ -5,15 +5,12 @@
 class Aq32Video {
 public:
     enum {
-        VCTRL_TEXT_ENABLE         = (1 << 0),
-        VCTRL_GFXMODE_OFF         = (0 << 1),
-        VCTRL_GFXMODE_TILEMAP     = (1 << 1),
-        VCTRL_GFXMODE_BITMAP_4BPP = (3 << 1),
-        VCTRL_GFXMODE_MASK        = (3 << 1),
-        VCTRL_SPRITES_ENABLE      = (1 << 3),
-        VCTRL_TEXT_PRIORITY       = (1 << 4),
-        VCTRL_80_COLUMNS          = (1 << 6),
-        VCTRL_TRAM_PAGE           = (1 << 7),
+        VCTRL_TEXT_EN      = (1 << 0),
+        VCTRL_TEXT_MODE80  = (1 << 1),
+        VCTRL_TEXT_PRIO    = (1 << 2),
+        VCTRL_GFX_EN       = (1 << 3),
+        VCTRL_GFX_TILEMODE = (1 << 4),
+        VCTRL_SPR_EN       = (1 << 5),
     };
 
     Aq32Video();
