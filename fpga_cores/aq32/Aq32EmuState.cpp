@@ -6,6 +6,7 @@
 #include "Config.h"
 #include "bootrom.h"
 #include "Aq32Video.h"
+#include "Aq32Audio.h"
 #include "imgui.h"
 #include "Keyboard.h"
 
@@ -35,6 +36,7 @@
 #define REG_VLINE     0x02014
 #define REG_VIRQLINE  0x02018
 #define REG_KEYBUF    0x0201C
+#define BASE_FMSYNTH  0x02800
 #define BASE_SPRATTR  0x03000
 #define BASE_PALETTE  0x04000
 #define BASE_CHRAM    0x05000
@@ -84,6 +86,7 @@ class Aq32EmuState : public EmuState {
 public:
     riscv                cpu;
     Aq32Video            video;
+    Aq32Audio            audio;
     uint8_t              keybMatrix[8] = {0};
     std::deque<uint16_t> kbBuf;
     const unsigned       kbBufSize  = 16;
@@ -179,6 +182,8 @@ public:
         cpu.trap         = 0;
 
         kbBuf.clear();
+        video.reset();
+        audio.reset();
     }
 
     void loadConfig() {
@@ -376,6 +381,21 @@ public:
                     kbBuf.pop_front();
             }
             return result;
+        } else if (addr >= BASE_FMSYNTH && addr < (BASE_FMSYNTH + 256 * 4)) {
+            unsigned idx = (addr >> 2) & 255;
+            if (idx == 0)
+                return audio.reg0_ch_op4;
+            else if (idx == 1)
+                return audio.reg1;
+            else if (idx == 2)
+                return audio.reg2_kon;
+            else if (idx >= 96 && idx <= 127)
+                return audio.ch_attr[idx - 96];
+            else if (idx >= 128 && idx <= 191)
+                return audio.op_attr0[idx - 128];
+            else if (idx >= 192 && idx <= 255)
+                return audio.op_attr1[idx - 192];
+
         } else if (addr >= BASE_SPRATTR && addr < (BASE_SPRATTR + 64 * 8)) {
             // Sprite attributes (32b)
             int sprIdx = (addr >> 3) & 63;
@@ -434,6 +454,21 @@ public:
             video.videoIrqLine = val & 0xFF;
         } else if (addr == REG_KEYBUF) {
             kbBuf.clear();
+        } else if (addr >= BASE_FMSYNTH && addr < (BASE_FMSYNTH + 256 * 4)) {
+            unsigned idx = (addr >> 2) & 255;
+            if (idx == 0)
+                audio.reg0_ch_op4 = val & 0xFFFF;
+            else if (idx == 1)
+                audio.reg1 = val & 0x40C0;
+            else if (idx == 2) {
+                audio.ch_restart |= ~audio.reg2_kon & val;
+                audio.reg2_kon = val;
+            } else if (idx >= 96 && idx <= 127)
+                audio.ch_attr[idx - 96] = val & 0x3F1FFF;
+            else if (idx >= 128 && idx <= 191)
+                audio.op_attr0[idx - 128] = val;
+            else if (idx >= 192 && idx <= 255)
+                audio.op_attr1[idx - 192] = val & 7;
         } else if (addr >= BASE_SPRATTR && addr < (BASE_SPRATTR + 64 * 8)) {
             // Sprite attributes (32b)
             int sprIdx = (addr >> 3) & 63;
@@ -537,6 +572,15 @@ public:
         }
         while (!emulateStep()) {
         }
+
+        if (audioBuf != nullptr) {
+            memset(audioBuf, 0, numSamples * sizeof(*audioBuf) * 2);
+
+            for (unsigned i = 0; i < numSamples; i++) {
+                audio.render(audioBuf);
+                audioBuf += 2;
+            }
+        }
     }
 
     void keyboardTypeIn() {
@@ -579,6 +623,9 @@ public:
         if (ImGui::Begin("IO Registers", p_open, 0)) {
             if (ImGui::CollapsingHeader("Video")) {
                 video.dbgDrawIoRegs();
+            }
+            if (ImGui::CollapsingHeader("Audio")) {
+                audio.dbgDrawIoRegs();
             }
             if (ImGui::CollapsingHeader("Sprites")) {
                 video.dbgDrawSpriteRegs();
