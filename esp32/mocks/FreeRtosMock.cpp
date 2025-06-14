@@ -136,6 +136,11 @@ BaseType_t xQueueReset(QueueHandle_t xQueue) {
     return pdTRUE;
 }
 
+UBaseType_t uxQueueMessagesWaiting(const QueueHandle_t xQueue) {
+    std::lock_guard lock(xQueue->mutex);
+    return xQueue->count;
+}
+
 //////////////////////////////////////////////////////////////////////////////
 // Semaphore
 //////////////////////////////////////////////////////////////////////////////

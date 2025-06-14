@@ -9,8 +9,8 @@
 #endif
 
 #include "VFS.h"
-#include "Keyboard.h"
 #include "FpgaCore.h"
+#include "MidiData.h"
 
 #ifndef EMULATOR
 static const char *TAG = "UartProtocol";
@@ -116,6 +116,13 @@ public:
         if (xTaskCreate(_uartEventTask, "uartEvent", 6144, this, 1, nullptr) != pdPASS) {
             ESP_LOGE(TAG, "Error creating uartEvent task");
         }
+#endif
+    }
+
+    void setBaudrate(unsigned baudrate) override {
+#ifndef EMULATOR
+        ESP_LOGI(TAG, "Setting baudrate to %u bps\n", baudrate);
+        uart_set_baudrate(UART_NUM, baudrate);
 #endif
     }
 
@@ -311,6 +318,14 @@ public:
                 if (rxBufIdx == 2) {
                     uint8_t ctrlIdx = rxBuf[1];
                     cmdGetGameCtrl(ctrlIdx);
+                    rxBufIdx = 0;
+                }
+                break;
+            }
+            case ESPCMD_GETMIDIDATA: {
+                if (rxBufIdx == 3) {
+                    uint16_t size = rxBuf[1] | (rxBuf[2] << 8);
+                    cmdGetMidiData(size);
                     rxBufIdx = 0;
                 }
                 break;
@@ -578,6 +593,28 @@ public:
             txWrite(data.rt);
             txWrite(data.buttons & 0xFF);
             txWrite(data.buttons >> 8);
+        }
+    }
+    void cmdGetMidiData(uint16_t size) {
+        DBGF("GETMIDIDATA(size=%u)", size);
+        txStart();
+        txWrite(0);
+        auto midiData = MidiData::instance();
+        auto count    = midiData->getDataCount();
+        if (count * 4 > size) {
+            count = size / 4;
+        }
+        size = count * 4;
+        txWrite((size >> 0) & 0xFF);
+        txWrite((size >> 8) & 0xFF);
+
+        while (count--) {
+            uint8_t buf[4];
+            midiData->getData(buf);
+            txWrite(buf[0]);
+            txWrite(buf[1]);
+            txWrite(buf[2]);
+            txWrite(buf[3]);
         }
     }
     void cmdOpen(uint8_t flags, const char *pathArg) {

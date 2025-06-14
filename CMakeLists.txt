@@ -69,6 +69,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     esp32/FPGA.cpp
     esp32/Keyboard.cpp
     esp32/UartProtocol.cpp
+    esp32/MidiData.cpp
     esp32/VFS/EspVFS.cpp
     esp32/VFS/HttpVFS.cpp
     esp32/VFS/SDCardVFS.cpp
