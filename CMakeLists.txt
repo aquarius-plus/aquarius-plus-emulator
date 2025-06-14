@@ -45,6 +45,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     MemoryEditor.cpp
     UI.cpp
     Version.cpp
+    Midi.cpp
     
     lib/Common.cpp
     
@@ -106,9 +107,11 @@ if (LINUX)
 
     # Add SDL includes/library/options
     find_package(SDL2 REQUIRED)
-    target_link_libraries(${CMAKE_PROJECT_NAME} ${SDL2_LIBRARIES})
+    target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE ${SDL2_LIBRARIES})
     target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${SDL2_INCLUDE_DIRS})
     target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE ${SDL2_CFLAGS_OTHER})
+
+    target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE asound)
 endif()
 
 if (APPLE)

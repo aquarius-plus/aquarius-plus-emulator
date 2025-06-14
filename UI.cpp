@@ -3,6 +3,7 @@
 
 #include "EmuState.h"
 #include "Audio.h"
+#include "Midi.h"
 #include "AssemblyListing.h"
 
 #define IMGUI_DEFINE_MATH_OPERATORS
@@ -83,6 +84,7 @@ public:
         ImGui::LoadIniSettingsFromMemory(config->imguiConf.c_str());
 
         // Initialize emulator
+        Midi::instance()->init();
         Audio::instance()->init();
         Audio::instance()->start();
 
