@@ -1,39 +1,12 @@
 #include "Aq32Audio.h"
 #include "imgui.h"
 
-static const uint16_t lut_exp[256] = {
-    0x3fa, 0x3f5, 0x3ef, 0x3ea, 0x3e4, 0x3df, 0x3da, 0x3d4,
-    0x3cf, 0x3c9, 0x3c4, 0x3bf, 0x3b9, 0x3b4, 0x3ae, 0x3a9,
-    0x3a4, 0x39f, 0x399, 0x394, 0x38f, 0x38a, 0x384, 0x37f,
-    0x37a, 0x375, 0x370, 0x36a, 0x365, 0x360, 0x35b, 0x356,
-    0x351, 0x34c, 0x347, 0x342, 0x33d, 0x338, 0x333, 0x32e,
-    0x329, 0x324, 0x31f, 0x31a, 0x315, 0x310, 0x30b, 0x306,
-    0x302, 0x2fd, 0x2f8, 0x2f3, 0x2ee, 0x2e9, 0x2e5, 0x2e0,
-    0x2db, 0x2d6, 0x2d2, 0x2cd, 0x2c8, 0x2c4, 0x2bf, 0x2ba,
-    0x2b5, 0x2b1, 0x2ac, 0x2a8, 0x2a3, 0x29e, 0x29a, 0x295,
-    0x291, 0x28c, 0x288, 0x283, 0x27f, 0x27a, 0x276, 0x271,
-    0x26d, 0x268, 0x264, 0x25f, 0x25b, 0x257, 0x252, 0x24e,
-    0x249, 0x245, 0x241, 0x23c, 0x238, 0x234, 0x230, 0x22b,
-    0x227, 0x223, 0x21e, 0x21a, 0x216, 0x212, 0x20e, 0x209,
-    0x205, 0x201, 0x1fd, 0x1f9, 0x1f5, 0x1f0, 0x1ec, 0x1e8,
-    0x1e4, 0x1e0, 0x1dc, 0x1d8, 0x1d4, 0x1d0, 0x1cc, 0x1c8,
-    0x1c4, 0x1c0, 0x1bc, 0x1b8, 0x1b4, 0x1b0, 0x1ac, 0x1a8,
-    0x1a4, 0x1a0, 0x19c, 0x199, 0x195, 0x191, 0x18d, 0x189,
-    0x185, 0x181, 0x17e, 0x17a, 0x176, 0x172, 0x16f, 0x16b,
-    0x167, 0x163, 0x160, 0x15c, 0x158, 0x154, 0x151, 0x14d,
-    0x149, 0x146, 0x142, 0x13e, 0x13b, 0x137, 0x134, 0x130,
-    0x12c, 0x129, 0x125, 0x122, 0x11e, 0x11b, 0x117, 0x114,
-    0x110, 0x10c, 0x109, 0x106, 0x102, 0x0ff, 0x0fb, 0x0f8,
-    0x0f4, 0x0f1, 0x0ed, 0x0ea, 0x0e7, 0x0e3, 0x0e0, 0x0dc,
-    0x0d9, 0x0d6, 0x0d2, 0x0cf, 0x0cc, 0x0c8, 0x0c5, 0x0c2,
-    0x0be, 0x0bb, 0x0b8, 0x0b5, 0x0b1, 0x0ae, 0x0ab, 0x0a8,
-    0x0a4, 0x0a1, 0x09e, 0x09b, 0x098, 0x094, 0x091, 0x08e,
-    0x08b, 0x088, 0x085, 0x082, 0x07e, 0x07b, 0x078, 0x075,
-    0x072, 0x06f, 0x06c, 0x069, 0x066, 0x063, 0x060, 0x05d,
-    0x05a, 0x057, 0x054, 0x051, 0x04e, 0x04b, 0x048, 0x045,
-    0x042, 0x03f, 0x03c, 0x039, 0x036, 0x033, 0x030, 0x02d,
-    0x02a, 0x028, 0x025, 0x022, 0x01f, 0x01c, 0x019, 0x016,
-    0x014, 0x011, 0x00e, 0x00b, 0x008, 0x006, 0x003, 0x000};
+enum {
+    EG_ATTACK = 0,
+    EG_DECAY,
+    EG_SUSTAIN,
+    EG_RELEASE
+};
 
 static const uint16_t lut_logsin[256] = {
     0x859, 0x6c3, 0x607, 0x58b, 0x52e, 0x4e4, 0x4a6, 0x471,
@@ -69,6 +42,40 @@ static const uint16_t lut_logsin[256] = {
     0x002, 0x001, 0x001, 0x001, 0x001, 0x001, 0x001, 0x001,
     0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000};
 
+static const uint16_t lut_exp[256] = {
+    0x3fa, 0x3f5, 0x3ef, 0x3ea, 0x3e4, 0x3df, 0x3da, 0x3d4,
+    0x3cf, 0x3c9, 0x3c4, 0x3bf, 0x3b9, 0x3b4, 0x3ae, 0x3a9,
+    0x3a4, 0x39f, 0x399, 0x394, 0x38f, 0x38a, 0x384, 0x37f,
+    0x37a, 0x375, 0x370, 0x36a, 0x365, 0x360, 0x35b, 0x356,
+    0x351, 0x34c, 0x347, 0x342, 0x33d, 0x338, 0x333, 0x32e,
+    0x329, 0x324, 0x31f, 0x31a, 0x315, 0x310, 0x30b, 0x306,
+    0x302, 0x2fd, 0x2f8, 0x2f3, 0x2ee, 0x2e9, 0x2e5, 0x2e0,
+    0x2db, 0x2d6, 0x2d2, 0x2cd, 0x2c8, 0x2c4, 0x2bf, 0x2ba,
+    0x2b5, 0x2b1, 0x2ac, 0x2a8, 0x2a3, 0x29e, 0x29a, 0x295,
+    0x291, 0x28c, 0x288, 0x283, 0x27f, 0x27a, 0x276, 0x271,
+    0x26d, 0x268, 0x264, 0x25f, 0x25b, 0x257, 0x252, 0x24e,
+    0x249, 0x245, 0x241, 0x23c, 0x238, 0x234, 0x230, 0x22b,
+    0x227, 0x223, 0x21e, 0x21a, 0x216, 0x212, 0x20e, 0x209,
+    0x205, 0x201, 0x1fd, 0x1f9, 0x1f5, 0x1f0, 0x1ec, 0x1e8,
+    0x1e4, 0x1e0, 0x1dc, 0x1d8, 0x1d4, 0x1d0, 0x1cc, 0x1c8,
+    0x1c4, 0x1c0, 0x1bc, 0x1b8, 0x1b4, 0x1b0, 0x1ac, 0x1a8,
+    0x1a4, 0x1a0, 0x19c, 0x199, 0x195, 0x191, 0x18d, 0x189,
+    0x185, 0x181, 0x17e, 0x17a, 0x176, 0x172, 0x16f, 0x16b,
+    0x167, 0x163, 0x160, 0x15c, 0x158, 0x154, 0x151, 0x14d,
+    0x149, 0x146, 0x142, 0x13e, 0x13b, 0x137, 0x134, 0x130,
+    0x12c, 0x129, 0x125, 0x122, 0x11e, 0x11b, 0x117, 0x114,
+    0x110, 0x10c, 0x109, 0x106, 0x102, 0x0ff, 0x0fb, 0x0f8,
+    0x0f4, 0x0f1, 0x0ed, 0x0ea, 0x0e7, 0x0e3, 0x0e0, 0x0dc,
+    0x0d9, 0x0d6, 0x0d2, 0x0cf, 0x0cc, 0x0c8, 0x0c5, 0x0c2,
+    0x0be, 0x0bb, 0x0b8, 0x0b5, 0x0b1, 0x0ae, 0x0ab, 0x0a8,
+    0x0a4, 0x0a1, 0x09e, 0x09b, 0x098, 0x094, 0x091, 0x08e,
+    0x08b, 0x088, 0x085, 0x082, 0x07e, 0x07b, 0x078, 0x075,
+    0x072, 0x06f, 0x06c, 0x069, 0x066, 0x063, 0x060, 0x05d,
+    0x05a, 0x057, 0x054, 0x051, 0x04e, 0x04b, 0x048, 0x045,
+    0x042, 0x03f, 0x03c, 0x039, 0x036, 0x033, 0x030, 0x02d,
+    0x02a, 0x028, 0x025, 0x022, 0x01f, 0x01c, 0x019, 0x016,
+    0x014, 0x011, 0x00e, 0x00b, 0x008, 0x006, 0x003, 0x000};
+
 static const uint8_t mult_lut[16] = {1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 20, 24, 24, 30, 30};
 static const uint8_t ksl_lut[16]  = {0, 32, 40, 45, 48, 51, 53, 55, 56, 58, 59, 60, 61, 62, 63, 64};
 
@@ -77,10 +84,9 @@ Aq32Audio::Aq32Audio() {
 }
 
 void Aq32Audio::reset() {
-    reg0_ch_op4 = 0;
+    reg0_ch_4op = 0;
     reg1        = 0;
     reg2_kon    = 0;
-    ch_restart  = 0;
     memset(ch_attr, 0, sizeof(ch_attr));
     memset(op_attr0, 0, sizeof(op_attr0));
     memset(op_attr1, 0, sizeof(op_attr1));
@@ -90,6 +96,11 @@ void Aq32Audio::reset() {
     vibpos = 0;
     am_dir = false;
     am_cnt = 0;
+
+    for (unsigned i = 0; i < 64; i++) {
+        opData[i].eg_env  = 0x1FF;
+        opData[i].eg_stage = EG_RELEASE;
+    }
 }
 
 void Aq32Audio::render(int16_t results[2]) {
@@ -114,7 +125,7 @@ void Aq32Audio::render(int16_t results[2]) {
     }
     unsigned am_val = am_cnt >> (dam ? 2 : 4);
 
-    for (int op_sel = 0; op_sel < 64; op_sel++) {
+    for (unsigned op_sel = 0; op_sel < 64; op_sel++) {
         unsigned ws   = (op_attr1[op_sel] >> 0) & 7;
         bool     am   = (op_attr0[op_sel] >> 31) & 1;
         bool     vib  = (op_attr0[op_sel] >> 30) & 1;
@@ -136,8 +147,7 @@ void Aq32Audio::render(int16_t results[2]) {
         unsigned alg_4op = (((ch_attr[(op_sel / 4) * 2 + 0] >> 16) & 1) << 1) | ((ch_attr[(op_sel / 4) * 2 + 1] >> 16) & 1);
         unsigned block   = (ch_attr[op_sel / 2] >> 10) & 7;
         unsigned fnum    = (ch_attr[op_sel / 2] >> 0) & 0x3FF;
-        bool     is_4op  = (reg0_ch_op4 >> (op_sel / 4)) & 1;
-        bool     restart = (ch_restart >> (op_sel / 2)) & 1;
+        bool     is_4op  = (reg0_ch_4op >> (op_sel / 4)) & 1;
         bool     kon     = (reg2_kon >> (op_sel / 2)) & 1;
         ChData  &chd     = chData[op_sel / 2];
 
@@ -145,8 +155,10 @@ void Aq32Audio::render(int16_t results[2]) {
         // but emulator has a sample rate of 44100Hz.
         // So we scale the frequency numbers here:
         fnum = (fnum * 49722) / 44100;
-        if (fnum > 0x3FF)
+        if (fnum > 0x3FF) {
+            printf("Iek!\n");
             fnum = 0x3FF;
+        }
 
         bool do_fb;
         bool do_sum;
@@ -174,153 +186,163 @@ void Aq32Audio::render(int16_t results[2]) {
             }
         }
 
-        // Phase: Vibrato
-        unsigned range = fnum >> 7;
-        if ((vibpos & 3) == 0 || !vib)
-            range = 0;
-        else if (vibpos & 1)
-            range >>= 1;
-        if (!dvb)
-            range >>= 1;
-        unsigned f_num = (vibpos & 4) ? (fnum - range) : (fnum + range);
-
-        // Phase: Accumulator
-        unsigned phase_inc = (((f_num << block) >> 1) * mult) >> 1;
-        unsigned phase     = (opd.phase >> 9) & 0x3FF;
-        opd.phase          = (restart ? 0 : opd.phase) + (phase_inc & 0x7FFFF);
-
         // EG
-        unsigned eg_ksl = (ksl_lut[(f_num >> 6) & 0xF] << 2) - ((8 - block) << 5);
-        switch (ksl) {
-            case 0: eg_ksl >>= 8; break;
-            case 1: eg_ksl >>= 1; break;
-            case 2: eg_ksl >>= 2; break;
-            case 3: eg_ksl >>= 0; break;
+        unsigned env;
+        bool     restart = false;
+        {
+            int eg_ksl = (ksl_lut[(fnum >> 6) & 0xF] << 2) - ((8 - block) << 5);
+            if (eg_ksl < 0)
+                eg_ksl = 0;
+
+            switch (ksl) {
+                case 0: eg_ksl >>= 8; break;
+                case 1: eg_ksl >>= 1; break;
+                case 2: eg_ksl >>= 2; break;
+                case 3: eg_ksl >>= 0; break;
+            }
+            env = std::min(511U, opd.eg_env + (tl << 2) + eg_ksl + (am ? am_val : 0));
+
+            // Rate offset (based on key split and key scaling)
+            unsigned rof = ((block << 1) | ((fnum >> (nts ? 8 : 9)) & 1)) >> (ksr ? 0 : 2);
+
+            // Stage rate
+            unsigned stage_rate = 0;
+            if (kon && opd.eg_stage == EG_RELEASE) {
+                restart    = true;
+                stage_rate = ar;
+
+            } else {
+                switch (opd.eg_stage) {
+                    case EG_ATTACK: stage_rate = ar; break;
+                    case EG_DECAY: stage_rate = dr; break;
+                    case EG_SUSTAIN: stage_rate = sus ? 0 : rr; break;
+                    case EG_RELEASE: stage_rate = rr; break;
+                }
+            }
+
+            unsigned rate = (stage_rate == 0) ? 0 : std::min(63U, rof + (stage_rate << 2));
+
+            uint8_t overflow = 0;
+            if (stage_rate != 0) {
+                unsigned eg_cnt = opd.eg_cnt + ((4 | (rate & 3)) << ((rate >> 2) & 0xF));
+                overflow        = eg_cnt >> 15;
+                opd.eg_cnt      = eg_cnt & 0x7FFF;
+            }
+
+            switch (opd.eg_stage) {
+                case EG_ATTACK: {
+                    if (opd.eg_env == 0)
+                        opd.eg_stage = EG_DECAY;
+                    else if (overflow > 0)
+                        opd.eg_env -= ((opd.eg_env * overflow) >> 3) + 1;
+                    break;
+                }
+                case EG_DECAY: {
+                    if ((opd.eg_env >> 4) >= sl) {
+                        opd.eg_stage = EG_SUSTAIN;
+                    } else {
+                        opd.eg_env = std::min(511, opd.eg_env + overflow);
+                    }
+                    break;
+                }
+                case EG_SUSTAIN:
+                case EG_RELEASE: {
+                    opd.eg_env = std::min(511, opd.eg_env + overflow);
+                    break;
+                }
+            }
+
+            if (restart)
+                opd.eg_stage = EG_ATTACK;
+            if (!kon)
+                opd.eg_stage = EG_RELEASE;
         }
-        unsigned env = std::min(511U, (((unsigned)opd.envCnt >> 15) + (tl << 2) + eg_ksl + (am ? am_val : 0)));
 
-        // Rate offset (based on key split and key scaling)
-        unsigned rof = ((block << 1) | ((fnum >> (nts ? 8 : 9)) & 1)) >> (ksr ? 0 : 2);
+        // Phase
+        unsigned phase;
+        {
+            // Phase: Vibrato
+            unsigned range = (fnum >> 7) & 7;
+            if ((vibpos & 3) == 0 || !vib)
+                range = 0;
+            else if (vibpos & 1)
+                range >>= 1;
+            if (!dvb)
+                range >>= 1;
+            unsigned f_num = (vibpos & 4) ? (fnum - range) : (fnum + range);
 
-        // Stage rate
-        unsigned stage_rate = 0;
-        switch (opd.stage) {
-            case 0: stage_rate = ar; break;
-            case 1: stage_rate = dr; break;
-            case 2: stage_rate = 0; break;
-            case 3: stage_rate = rr; break;
-        }
-        unsigned rate = std::min(63U, rof + (stage_rate << 2));
-
-        unsigned eg_env_cnt_inc = (4 | (rate & 3)) << ((rate >> 2) & 0xF);
-        if (opd.stage == 0)
-            eg_env_cnt_inc = (~env) << ((rate >> 2) & 0xF);
-
-        opd.envCnt += (stage_rate != 0 ? eg_env_cnt_inc : 0);
-
-        switch (opd.stage) {
-            case 0: {
-                if (ar == 15 || (opd.envCnt < 0)) {
-                    opd.envCnt = 0;
-                    opd.stage  = 1;
-                }
-                break;
-            }
-            case 1: {
-                if (dr != 0 && ((opd.envCnt >> 20) & 0xF) > sl) {
-                    opd.envCnt = sl << 20;
-                    opd.stage  = 2;
-                }
-                break;
-            }
-            case 2: {
-                opd.envCnt = sl << 20;
-                if (!sus) {
-                    opd.stage = 3;
-                }
-                break;
-            }
-            case 3: {
-                if ((opd.envCnt >> 15) > 511) {
-                    opd.envCnt = 511 << 15;
-                }
-
-                // if (opd.envCnt & (1 << 24)) {
-                //     opd.envCnt = ~0;
-                //     printf("->D\n");
-                // }
-                break;
-            }
+            // Phase: Accumulator
+            unsigned phase_inc = (((f_num << block) >> 1) * mult) >> 1;
+            phase              = opd.phase >> 9;
+            opd.phase          = (restart ? 0 : opd.phase) + phase_inc;
         }
 
-        if (restart)
-            opd.stage = 0;
-        if (!kon)
-            opd.stage = 3;
+        // Feedback
+        int fbmod = (fb == 0) ? 0 : (((chd.prevSamples[0] + chd.prevSamples[1]) / 4) >> (fb ^ 7));
 
         // Operator
-        unsigned op_modulation = 0;
-        if (do_fb)
-            op_modulation = (fb == 0) ? 0 : ((((chData->prevSamples[0] + chData->prevSamples[1]) / 4) >> (fb ^ 7)) & 0x3FF);
-        else if (do_mod)
-            op_modulation = op_result & 0x3FF;
+        {
+            unsigned op_modulation = 0;
+            if (do_fb)
+                op_modulation = fbmod;
+            else if (do_mod)
+                op_modulation = op_result;
 
-        unsigned op_phase = (phase + op_modulation) & 0x3FF;
+            unsigned op_phase = (phase + op_modulation) & 0x3FF;
 
-        uint8_t logsin_idx;
-        switch (ws) {
-            default: logsin_idx = (op_phase & 0xFF) ^ ((op_phase & 0x100) ? 0xFF : 0); break;
-            case 4:
-            case 5: logsin_idx = ((op_phase << 1) & 0xFF) ^ ((op_phase & 0x80) ? 0xFF : 0); break;
-        }
-        unsigned logsin_value = lut_logsin[logsin_idx];
+            uint8_t logsin_idx;
+            switch (ws) {
+                default: logsin_idx = ((op_phase & 0x100) ? ~op_phase : op_phase) & 0xFF; break;
+                case 4:
+                case 5: logsin_idx = (((op_phase & 0x100) ? ~op_phase : op_phase) << 1) & 0xFF; break;
+            }
+            unsigned logsin_value = lut_logsin[logsin_idx];
 
-        bool negate;
-        switch (ws) {
-            default: negate = false; break;
-            case 0:
-            case 6:
-            case 7: negate = (op_phase & 0x200) != 0; break;
-            case 4: negate = (op_phase & 0x300) == 0x100; break;
-        }
+            bool negate;
+            switch (ws) {
+                default: negate = false; break;
+                case 0:
+                case 6:
+                case 7: negate = (op_phase & 0x200) != 0; break;
+                case 4: negate = (op_phase & 0x300) == 0x100; break;
+            }
 
-        unsigned out;
-        switch (ws) {
-            default: out = logsin_value; break;
-            case 1:
-            case 4:
-            case 5: out = (op_phase & 0x200) ? 0x1000 : logsin_value; break;
-            case 3: out = (op_phase & 0x100) ? 0x1000 : logsin_value; break;
-            case 6: out = 0; break;
-            case 7: out = ((op_phase & 0x1FF) << 3) ^ ((op_phase & 0x200) ? (0x1FF << 3) : 0); break;
-        }
+            unsigned out;
+            switch (ws) {
+                default: out = logsin_value; break;
+                case 1:
+                case 4:
+                case 5: out = (op_phase & 0x200) ? 0x1000 : logsin_value; break;
+                case 3: out = (op_phase & 0x100) ? 0x1000 : logsin_value; break;
+                case 6: out = 0; break;
+                case 7: out = ((op_phase & 0x1FF) ^ ((op_phase & 0x200) ? 0x1FF : 0)) << 3; break;
+            }
 
-        unsigned level = std::min(0x1FFFU, out + (env << 3));
-        op_result      = ((0x400 | lut_exp[level & 0xFF]) << 1) >> ((level >> 8) & 0x1F);
-        if (op_result != 0 && negate)
-            op_result = ~op_result;
+            unsigned level = std::min(0x1FFFU, out + (env << 3));
+            op_result      = ((0x400 | lut_exp[level & 0xFF]) << 1) >> (level >> 8);
+            if (op_result != 0 && negate)
+                op_result = ~op_result;
 
-        if (do_sum) {
-            if (cha)
-                accum_l += op_result;
-            if (chb)
-                accum_r += op_result;
-        }
+            if (do_sum) {
+                if (cha)
+                    accum_l += op_result;
+                if (chb)
+                    accum_r += op_result;
+            }
 
-        if ((op_sel & 1) == 0) {
-            chd.prevSamples[1] = chd.prevSamples[0];
-            chd.prevSamples[0] = op_result;
+            if ((op_sel & 1) == 0) {
+                chd.prevSamples[1] = chd.prevSamples[0];
+                chd.prevSamples[0] = op_result;
+            }
         }
     }
-
-    ch_restart = 0;
 
     results[0] = std::min(std::max(-32768, accum_l), 32767);
     results[1] = std::min(std::max(-32768, accum_r), 32767);
 }
 
 void Aq32Audio::dbgDrawIoRegs() {
-    ImGui::Text("reg0_ch_op4: 0x%04X", reg0_ch_op4);
+    ImGui::Text("reg0_ch_4op: 0x%04X", reg0_ch_4op);
     ImGui::Text("reg1: 0x%04X", reg1);
     ImGui::Text("reg2_kon: 0x%08X", reg2_kon);
 }

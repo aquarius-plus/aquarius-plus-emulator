@@ -6,12 +6,11 @@ class Aq32Audio {
 public:
     Aq32Audio();
     void reset();
-    void render(int16_t result[2]);
+    void render(int16_t results[2]);
 
-    uint32_t reg0_ch_op4;
+    uint32_t reg0_ch_4op;
     uint32_t reg1;
     uint32_t reg2_kon;
-    uint32_t ch_restart;
     uint32_t ch_attr[32];
     uint32_t op_attr0[64];
     uint32_t op_attr1[64];
@@ -24,8 +23,9 @@ private:
     };
     struct OpData {
         uint32_t phase;
-        uint8_t  stage;
-        int      envCnt;
+        uint8_t  eg_stage;
+        uint16_t eg_env; // 0-511
+        uint16_t eg_cnt; // 0-32767
     };
 
     ChData chData[32];

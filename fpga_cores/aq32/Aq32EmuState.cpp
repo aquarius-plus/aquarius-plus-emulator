@@ -384,7 +384,7 @@ public:
         } else if (addr >= BASE_FMSYNTH && addr < (BASE_FMSYNTH + 256 * 4)) {
             unsigned idx = (addr >> 2) & 255;
             if (idx == 0)
-                return audio.reg0_ch_op4;
+                return audio.reg0_ch_4op;
             else if (idx == 1)
                 return audio.reg1;
             else if (idx == 2)
@@ -457,11 +457,10 @@ public:
         } else if (addr >= BASE_FMSYNTH && addr < (BASE_FMSYNTH + 256 * 4)) {
             unsigned idx = (addr >> 2) & 255;
             if (idx == 0)
-                audio.reg0_ch_op4 = val & 0xFFFF;
+                audio.reg0_ch_4op = val & 0xFFFF;
             else if (idx == 1)
                 audio.reg1 = val & 0x40C0;
             else if (idx == 2) {
-                audio.ch_restart |= ~audio.reg2_kon & val;
                 audio.reg2_kon = val;
             } else if (idx >= 96 && idx <= 127)
                 audio.ch_attr[idx - 96] = val & 0x3F1FFF;
