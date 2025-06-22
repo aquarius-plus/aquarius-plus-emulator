@@ -459,7 +459,7 @@ public:
             if (idx == 0)
                 audio.reg0_ch_4op = val & 0xFFFF;
             else if (idx == 1)
-                audio.reg1 = val & 0x40C0;
+                audio.reg1 = val & 0x00C0;
             else if (idx == 2) {
                 audio.reg2_kon = val;
             } else if (idx >= 96 && idx <= 127)
@@ -535,6 +535,8 @@ public:
             if (cur_line == 262) {
                 cur_line     = 0;
                 end_of_frame = true;
+
+                cpu.pendInterrupt(1 << 16);
             }
 
             video.drawLine(cur_line);

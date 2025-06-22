@@ -98,13 +98,12 @@ void Aq32Audio::reset() {
     am_cnt = 0;
 
     for (unsigned i = 0; i < 64; i++) {
-        opData[i].eg_env  = 0x1FF;
+        opData[i].eg_env   = 0x1FF;
         opData[i].eg_stage = EG_RELEASE;
     }
 }
 
 void Aq32Audio::render(int16_t results[2]) {
-    bool nts = (reg1 >> 14) & 1;
     bool dam = (reg1 >> 7) & 1;
     bool dvb = (reg1 >> 6) & 1;
 
@@ -140,6 +139,9 @@ void Aq32Audio::render(int16_t results[2]) {
         unsigned rr   = (op_attr0[op_sel] >> 0) & 0xF;
         OpData  &opd  = opData[op_sel];
 
+        if (sl == 0xF)
+            sl = 0x1F;
+
         bool     chb     = (ch_attr[op_sel / 2] >> 21) & 1;
         bool     cha     = (ch_attr[op_sel / 2] >> 20) & 1;
         unsigned fb      = (ch_attr[op_sel / 2] >> 17) & 7;
@@ -156,7 +158,6 @@ void Aq32Audio::render(int16_t results[2]) {
         // So we scale the frequency numbers here:
         fnum = (fnum * 49722) / 44100;
         if (fnum > 0x3FF) {
-            printf("Iek!\n");
             fnum = 0x3FF;
         }
 
@@ -203,7 +204,7 @@ void Aq32Audio::render(int16_t results[2]) {
             env = std::min(511U, opd.eg_env + (tl << 2) + eg_ksl + (am ? am_val : 0));
 
             // Rate offset (based on key split and key scaling)
-            unsigned rof = ((block << 1) | ((fnum >> (nts ? 8 : 9)) & 1)) >> (ksr ? 0 : 2);
+            unsigned rof = ((block << 1) | ((fnum >> 9) & 1)) >> (ksr ? 0 : 2);
 
             // Stage rate
             unsigned stage_rate = 0;
@@ -220,7 +221,7 @@ void Aq32Audio::render(int16_t results[2]) {
                 }
             }
 
-            unsigned rate = (stage_rate == 0) ? 0 : std::min(63U, rof + (stage_rate << 2));
+            unsigned rate = std::min(63U, rof + (stage_rate << 2));
 
             uint8_t overflow = 0;
             if (stage_rate != 0) {
