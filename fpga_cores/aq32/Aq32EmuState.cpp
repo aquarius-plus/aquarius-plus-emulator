@@ -289,7 +289,7 @@ public:
 #endif
         switch (offset) {
             default:
-            case 0: return memRead(addr + 0);
+            case 0: return (uint32_t)memRead(addr + 0);
             case 1: return ((memRead(addr + 0) & 0xFFFFFF00) >> 8) | ((memRead(addr + 4) & 0x000000FF) << 24);
             case 2: return ((memRead(addr + 0) & 0xFFFF0000) >> 16) | ((memRead(addr + 4) & 0x0000FFFF) << 16);
             case 3: return ((memRead(addr + 0) & 0xFF000000) >> 24) | ((memRead(addr + 4) & 0x00FFFFFF) << 8);
@@ -823,7 +823,7 @@ public:
                     return (int)(uint8_t)((val >> ((off & 3) * 8)) & 0xFF);
                 };
                 memEdit.writeFn = [this](ImU8 *data, size_t off, ImU8 d) {
-                    memWrite(off, d | (d << 8) | (d << 16) | (d << 24), 0xFF << (off & 3) * 8);
+                    memWrite((uint32_t)off, d | (d << 8) | (d << 16) | (d << 24), 0xFF << (off & 3) * 8);
 
                     // memWrite((uint16_t)off, d);
                 };
