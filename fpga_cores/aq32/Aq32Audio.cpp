@@ -274,7 +274,7 @@ void Aq32Audio::render(int16_t results[2]) {
                     break;
                 }
                 case EG_DECAY: {
-                    if ((opd.eg_env >> 4U) >= sl) {
+                    if (((unsigned)(opd.eg_env >> 4)) >= sl) {
                         opd.eg_stage = EG_SUSTAIN;
                     } else {
                         opd.eg_env = std::min(511, opd.eg_env + overflow);
