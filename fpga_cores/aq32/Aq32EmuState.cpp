@@ -463,7 +463,7 @@ public:
             else if (idx == 2) {
                 audio.reg2_kon = val;
             } else if (idx >= 96 && idx <= 127)
-                audio.ch_attr[idx - 96] = val & 0x3F1FFF;
+                audio.ch_attr[idx - 96] = val & 0x07FF1FFF;
             else if (idx >= 128 && idx <= 191)
                 audio.op_attr0[idx - 128] = val;
             else if (idx >= 192 && idx <= 255)
