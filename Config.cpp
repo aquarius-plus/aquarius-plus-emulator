@@ -38,6 +38,16 @@ void Config::saveConfigFile(const std::string &filename, cJSON *root) {
     cJSON_Delete(root);
 }
 
+static int digitVal(uint8_t digit) {
+    if (digit >= '0' && digit <= '9')
+        return digit - '0';
+    if (digit >= 'a' && digit <= 'f')
+        return digit - 'a' + 10;
+    if (digit >= 'A' && digit <= 'F')
+        return digit - 'A' + 10;
+    return -1;
+}
+
 void Config::load() {
     if (auto root = loadConfigFile("config.json")) {
         imguiConf      = getStringValue(root, "imguiConfig", "");
@@ -74,6 +84,40 @@ void Config::load() {
             }
         }
 
+        // Read all NVS blob items
+        {
+            nvs_blobs.clear();
+            if (auto obj = cJSON_GetObjectItem(root, "nvs_blobs")) {
+                cJSON *item;
+                cJSON_ArrayForEach(item, obj) {
+                    if (item->type != cJSON_String)
+                        continue;
+
+                    const char *str = cJSON_GetStringValue(item);
+                    unsigned    len = strlen(str);
+                    if (len % 2 != 0)
+                        continue;
+
+                    std::vector<uint8_t> val;
+                    val.reserve(len / 2);
+
+                    bool err = false;
+                    for (unsigned i = 0; i < len / 2; i++) {
+                        int digit0 = digitVal(str[i * 2 + 0]);
+                        int digit1 = digitVal(str[i * 2 + 1]);
+                        if (digit0 < 0 || digit1 < 0) {
+                            err = true;
+                            break;
+                        }
+                        val.push_back((digit0 << 4) | digit1);
+                    }
+                    if (err)
+                        continue;
+
+                    nvs_blobs.insert_or_assign(item->string, val);
+                }
+            }
+        }
         cJSON_free(root);
     }
 
@@ -110,6 +154,21 @@ void Config::save() {
         cJSON *obj = cJSON_AddObjectToObject(root, "nvs_u8");
         for (auto &item : nvs_u8) {
             cJSON_AddNumberToObject(obj, item.first.c_str(), item.second);
+        }
+    }
+    // Store all NVS blob items
+    {
+        cJSON *obj = cJSON_AddObjectToObject(root, "nvs_blobs");
+        for (auto &item : nvs_blobs) {
+            std::string str;
+            str.reserve(item.second.size() * 2);
+
+            for (uint8_t val : item.second) {
+                static const char *digits = "0123456789abcdef";
+                str.push_back(digits[val >> 4]);
+                str.push_back(digits[val & 0xF]);
+            }
+            cJSON_AddStringToObject(obj, item.first.c_str(), str.c_str());
         }
     }
 

@@ -23,22 +23,23 @@ public:
     void load();
     void save();
 
-    std::map<std::string, uint8_t> nvs_u8;
+    std::map<std::string, uint8_t>              nvs_u8;
+    std::map<std::string, std::vector<uint8_t>> nvs_blobs;
 
     std::string appDataPath;
     std::string imguiConf;
     std::string sdCardPath;
     std::string asmListingPath;
 
-    int  wndPosX          = 0;
-    int  wndPosY          = 0;
-    int  wndWidth         = 0;
-    int  wndHeight        = 0;
-    bool enableSound      = true;
-    bool enableMouse      = true;
-    bool fontScale2x      = false;
-    bool enableDebugger   = false;
-    bool showEspInfo      = false;
+    int  wndPosX        = 0;
+    int  wndPosY        = 0;
+    int  wndWidth       = 0;
+    int  wndHeight      = 0;
+    bool enableSound    = true;
+    bool enableMouse    = true;
+    bool fontScale2x    = false;
+    bool enableDebugger = false;
+    bool showEspInfo    = false;
 
     DisplayScaling displayScaling = DisplayScaling::Linear;
 };
