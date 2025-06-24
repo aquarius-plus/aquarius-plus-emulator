@@ -623,7 +623,7 @@ public:
         bool open = ImGui::Begin("ESP info", p_open, 0);
         if (open) {
             ImGui::SeparatorText("Current path");
-            auto curPath = UartProtocol::instance()->getCurrentPath();
+            auto curPath = VFSContext::getDefault()->getCurrentPath();
             ImGui::Text("%s", curPath.empty() ? "/" : curPath.c_str());
             ImGui::SeparatorText("File descriptors");
             if (ImGui::BeginTable("Table", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersV | ImGuiTableFlags_BordersOuter)) {
@@ -634,7 +634,7 @@ public:
                 ImGui::TableSetupScrollFreeze(0, 1);
                 ImGui::TableHeadersRow();
 
-                for (auto &entry : UartProtocol::instance()->fi) {
+                for (auto &entry : VFSContext::getDefault()->fi) {
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();
                     ImGui::Text("%u", entry.first);
@@ -656,7 +656,7 @@ public:
                 ImGui::TableSetupScrollFreeze(0, 1);
                 ImGui::TableHeadersRow();
 
-                for (auto &entry : UartProtocol::instance()->di) {
+                for (auto &entry : VFSContext::getDefault()->di) {
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();
                     ImGui::Text("%u", entry.first);

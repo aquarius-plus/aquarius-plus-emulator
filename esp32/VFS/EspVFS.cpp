@@ -1,4 +1,5 @@
 #include "VFS.h"
+#include "xz.h"
 
 #ifndef EMULATOR
 extern const uint8_t romfs_start[] asm("_binary_romfs_bin_start");
@@ -10,18 +11,20 @@ const uint8_t *romfs_end = romfs_start + sizeof(romfs_start);
 
 #pragma pack(push, 1)
 struct FileEntry {
-    uint8_t  rec_size;
+    uint8_t  recSize;
     uint32_t offset;
     uint32_t fsize;
     uint16_t fdate;
     uint16_t ftime;
+    uint32_t compressedSize;
     char     filename[128];
 };
 #pragma pack(pop)
 
 struct OpenFile {
-    const FileEntry *fe     = nullptr;
-    unsigned         offset = 0;
+    const FileEntry     *fe     = nullptr;
+    unsigned             offset = 0;
+    std::vector<uint8_t> data;
 };
 
 static const FileEntry *findFile(const std::string &_path) {
@@ -36,9 +39,9 @@ static const FileEntry *findFile(const std::string &_path) {
     const uint8_t *p = romfs_start;
     while (1) {
         const FileEntry *fe = (const FileEntry *)p;
-        if (fe->rec_size == 0)
+        if (fe->recSize == 0)
             break;
-        p += fe->rec_size;
+        p += fe->recSize;
 
         if (strcasecmp(path.c_str(), fe->filename) == 0)
             return fe;
@@ -75,16 +78,25 @@ public:
 
         openFile.fe     = fe;
         openFile.offset = 0;
+        openFile.data.resize(openFile.fe->fsize);
+
+        ESP_LOGW("espvfs", "Decompressing '%s' %u -> %u", openFile.fe->filename, (unsigned)openFile.fe->compressedSize, (unsigned)openFile.fe->fsize);
+
+        if (xz_decompress((uint8_t *)romfs_start + openFile.fe->offset, openFile.fe->compressedSize, (uint8_t *)openFile.data.data()) != XZ_SUCCESS) {
+            openFile.fe = NULL;
+            openFile.data.clear();
+            return ERR_OTHER;
+        }
         return 0;
     }
 
     int read(int fd, size_t size, void *buf) override {
         if (fd == 0) {
-            int remaining = openFile.fe->fsize - openFile.offset;
+            int remaining = openFile.data.size() - openFile.offset;
             if ((int)size > remaining) {
                 size = remaining;
             }
-            memcpy(buf, romfs_start + openFile.fe->offset + openFile.offset, size);
+            memcpy(buf, openFile.data.data() + openFile.offset, size);
             openFile.offset += (int)size;
             return (int)size;
         } else {
@@ -116,6 +128,7 @@ public:
     int close(int fd) override {
         if (fd == 0) {
             openFile.fe = NULL;
+            openFile.data.clear();
         }
         return 0;
     }
@@ -130,9 +143,9 @@ public:
         const uint8_t *p = romfs_start;
         while (1) {
             struct FileEntry *fe = (struct FileEntry *)p;
-            if (fe->rec_size == 0)
+            if (fe->recSize == 0)
                 break;
-            p += fe->rec_size;
+            p += fe->recSize;
 
             result->emplace_back(fe->filename, (uint32_t)fe->fsize, 0, (uint16_t)fe->fdate, (uint16_t)fe->ftime);
         }
@@ -153,7 +166,6 @@ public:
             return 0;
 
         } else {
-
             auto fe = findFile(_path);
             if (!fe) {
                 return ERR_NOT_FOUND;

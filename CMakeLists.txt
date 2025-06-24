@@ -36,6 +36,8 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     external/libz80
     external/lodepng
     external/tinyfiledialogs
+
+    external/xz
 )
 
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
@@ -72,6 +74,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     esp32/Keyboard.cpp
     esp32/UartProtocol.cpp
     esp32/MidiData.cpp
+    esp32/xz.c
+    esp32/VFS/VFS.cpp
     esp32/VFS/EspVFS.cpp
     esp32/VFS/HttpVFS.cpp
     esp32/VFS/SDCardVFS.cpp
