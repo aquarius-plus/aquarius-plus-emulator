@@ -94,7 +94,7 @@ void Config::load() {
                         continue;
 
                     const char *str = cJSON_GetStringValue(item);
-                    unsigned    len = strlen(str);
+                    unsigned    len = (unsigned)strlen(str);
                     if (len % 2 != 0)
                         continue;
 
