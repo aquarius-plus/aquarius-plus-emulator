@@ -133,6 +133,11 @@ static void write16(Z80Context *ctx, uint16_t addr, uint16_t val) {
     write8(ctx, addr + 1, val >> 8);
 }
 
+static uint8_t read8_instr(Z80Context *ctx, uint16_t addr) {
+    ctx->tstates += 3;
+    return ctx->instrRead(ctx->memParam, addr);
+}
+
 static uint8_t read8(Z80Context *ctx, uint16_t addr) {
     ctx->tstates += 3;
     return ctx->memRead(ctx->memParam, addr);
@@ -584,7 +589,7 @@ static void do_execute(Z80Context *ctx) {
             opcode = ctx->int_vector;
             ctx->tstates += 6;
         } else {
-            opcode = read8(ctx, ctx->PC + offset);
+            opcode = read8_instr(ctx, ctx->PC + offset);
             ctx->PC++;
             ctx->tstates += 1;
         }
@@ -685,7 +690,7 @@ void Z80Debug(Z80Context *ctx, char *dump, char *decode) {
         decode[0] = 0;
 
     do {
-        opcode = read8(ctx, PC + offset);
+        opcode = read8_instr(ctx, PC + offset);
         size++;
 
         PC++;

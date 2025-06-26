@@ -3,12 +3,13 @@
 #include "tinyfiledialogs.h"
 
 Z80Core::Z80Core() {
-    z80ctx.ioRead   = _z80IoRead;
-    z80ctx.ioWrite  = _z80IoWrite;
-    z80ctx.ioParam  = reinterpret_cast<uintptr_t>(this);
-    z80ctx.memRead  = _z80MemRead;
-    z80ctx.memWrite = _z80MemWrite;
-    z80ctx.memParam = reinterpret_cast<uintptr_t>(this);
+    z80ctx.ioRead    = _z80IoRead;
+    z80ctx.ioWrite   = _z80IoWrite;
+    z80ctx.ioParam   = reinterpret_cast<uintptr_t>(this);
+    z80ctx.instrRead = _z80InstrRead;
+    z80ctx.memRead   = _z80MemRead;
+    z80ctx.memWrite  = _z80MemWrite;
+    z80ctx.memParam  = reinterpret_cast<uintptr_t>(this);
 }
 
 void Z80Core::reset() {
@@ -35,7 +36,7 @@ void Z80Core::loadConfig(cJSON *root) {
             bp.addr    = getIntValue(breakpoint, "addr", 0);
             bp.name    = getStringValue(breakpoint, "name", "");
             bp.enabled = getBoolValue(breakpoint, "enabled", false);
-            bp.type    = getIntValue(breakpoint, "type", 0);
+            bp.type    = (BpType)getIntValue(breakpoint, "type", 0);
             bp.onR     = getBoolValue(breakpoint, "onR", false);
             bp.onW     = getBoolValue(breakpoint, "onW", false);
             bp.onX     = getBoolValue(breakpoint, "onX", false);
@@ -81,7 +82,7 @@ void Z80Core::saveConfig(cJSON *root) {
         cJSON_AddNumberToObject(breakpoint, "addr", bp.addr);
         cJSON_AddStringToObject(breakpoint, "name", bp.name.c_str());
         cJSON_AddBoolToObject(breakpoint, "enabled", bp.enabled);
-        cJSON_AddNumberToObject(breakpoint, "type", bp.type);
+        cJSON_AddNumberToObject(breakpoint, "type", (int)bp.type);
         cJSON_AddBoolToObject(breakpoint, "onR", bp.onR);
         cJSON_AddBoolToObject(breakpoint, "onW", bp.onW);
         cJSON_AddBoolToObject(breakpoint, "onX", bp.onX);
@@ -98,33 +99,48 @@ void Z80Core::saveConfig(cJSON *root) {
     }
 }
 
+bool Z80Core::checkExecuteBreakpoints() {
+    lastBp        = -1;
+    lastBpAddress = -1;
+
+    for (int i = 0; i < (int)breakpoints.size(); i++) {
+        auto &bp = breakpoints[i];
+        if (bp.enabled && bp.type == BpType::Mem && bp.onX && z80ctx.PC == bp.addr && bp.addr != lastBpAddress) {
+            lastBp           = i;
+            lastBpAddress    = bp.addr;
+            lastBpAccessType = 3;
+            return true;
+        }
+    }
+    return false;
+}
+
 int Z80Core::emulate() {
     if (!enableDebugger) {
         emuMode       = Em_Running;
+        lastBpAddress = -1;
         tmpBreakpoint = -1;
+        haltAfterRet  = -1;
     }
     if (emuMode == Em_Halted) {
-        haltAfterRet  = -1;
         tmpBreakpoint = -1;
+        haltAfterRet  = -1;
         return 1;
     }
 
     if (enableDebugger) {
+        // Break on temporary breakpoint?
         if (tmpBreakpoint == z80ctx.PC) {
             tmpBreakpoint = -1;
             emuMode       = Em_Halted;
             return 0;
         }
 
+        // Check breakpoints
         if (enableBreakpoints) {
-            for (int i = 0; i < (int)breakpoints.size(); i++) {
-                auto &bp = breakpoints[i];
-                if (bp.enabled && bp.type == 0 && bp.onX && z80ctx.PC == bp.addr && bp.addr != lastBpAddress) {
-                    emuMode       = Em_Halted;
-                    lastBp        = i;
-                    lastBpAddress = bp.addr;
-                    return 0;
-                }
+            if (emuMode == Em_Running && z80ctx.PC != lastBpAddress && checkExecuteBreakpoints()) {
+                emuMode = Em_Halted;
+                return 0;
             }
         }
 
@@ -144,101 +160,181 @@ int Z80Core::emulate() {
             }
         }
     }
-    lastBp = -1;
+
+    if (emuMode == Em_Running) {
+        lastBp        = -1;
+        lastBpAddress = -1;
+    }
 
     // Generate interrupt if needed
-    if (hasIrq()) {
+    if (hasIrq())
         Z80INT(&z80ctx, 0xFF);
-    }
 
     // Emulate 1 instruction
     z80ctx.tstates = 0;
     Z80Execute(&z80ctx);
     int delta = z80ctx.tstates;
 
-    if (emuMode == Em_Step) {
-        emuMode = Em_Halted;
+    if (emuMode != Em_Running && lastBp < 0) {
+        checkExecuteBreakpoints();
     }
 
-    if (enableDebugger) {
-        if (traceEnable) {
-            cpuTrace.emplace_back();
-            auto &entry = cpuTrace.back();
-            entry.pc    = z80ctx.PC;
-            entry.r1    = z80ctx.R1;
-            entry.r2    = z80ctx.R2;
+    if (emuMode == Em_Step)
+        emuMode = Em_Halted;
 
-            z80ctx.tstates = 0;
-            Z80Debug(&z80ctx, entry.bytes, entry.instrStr);
-            while ((int)cpuTrace.size() > traceDepth) {
-                cpuTrace.pop_front();
-            }
-        }
+    if (enableDebugger && traceEnable) {
+        // Add next instruction to trace
+        cpuTrace.emplace_back();
+        auto &entry = cpuTrace.back();
+        entry.pc    = z80ctx.PC;
+        entry.r1    = z80ctx.R1;
+        entry.r2    = z80ctx.R2;
+        decodeInstruction(entry.bytes, entry.instrStr);
+
+        // Limit trace depth
+        while ((int)cpuTrace.size() > traceDepth)
+            cpuTrace.pop_front();
     }
     return delta;
 }
 
-uint8_t Z80Core::_z80MemRead(uintptr_t param, uint16_t addr) {
-    return reinterpret_cast<Z80Core *>(param)->z80MemRead(addr, true);
-}
-void Z80Core::_z80MemWrite(uintptr_t param, uint16_t addr, uint8_t data) {
-    reinterpret_cast<Z80Core *>(param)->z80MemWrite(addr, data, true);
-}
-uint8_t Z80Core::_z80IoRead(uintptr_t param, uint16_t addr) {
-    return reinterpret_cast<Z80Core *>(param)->z80IoRead(addr, true);
-}
-void Z80Core::_z80IoWrite(uintptr_t param, uint16_t addr, uint8_t data) {
-    reinterpret_cast<Z80Core *>(param)->z80IoWrite(addr, data, true);
+void Z80Core::decodeInstruction(char hex[32], char instr[32]) {
+    // Prevent triggering breakpoints
+    bool prevEnableBp = enableBreakpoints;
+    enableBreakpoints = false;
+
+    // Decode instruction
+    int tstates = z80ctx.tstates;
+    Z80Debug(&z80ctx, hex, instr);
+    z80ctx.tstates = tstates;
+
+    // Reenable breakpoint
+    enableBreakpoints = prevEnableBp;
 }
 
-uint8_t Z80Core::z80MemRead(uint16_t addr, bool triggerBp) {
-    if (enableBreakpoints && triggerBp) {
+void Z80Core::halt() {
+    lastBpAddress = -1;
+    tmpBreakpoint = -1;
+    haltAfterRet  = -1;
+    emuMode       = Em_Halted;
+}
+
+void Z80Core::stepInto() {
+    tmpBreakpoint = -1;
+    haltAfterRet  = -1;
+    emuMode       = Em_Step;
+}
+
+void Z80Core::stepOver() {
+    tmpBreakpoint = -1;
+
+    if (z80ctx.halted) {
+        // Step over HALT instruction
+        z80ctx.halted = 0;
+        z80ctx.PC++;
+
+    } else {
+        uint8_t opcode = memRead(z80ctx.PC);
+        if (opcode == 0xCD ||          // CALL nn
+            (opcode & 0xC7) == 0xC4) { // CALL c,nn
+
+            tmpBreakpoint = z80ctx.PC + 3;
+            emuMode       = Em_Running;
+
+        } else if ((opcode & 0xC7) == 0xC7) { // RST
+            tmpBreakpoint = z80ctx.PC + 1;
+            if ((opcode & 0x38) == 0x08 ||
+                (opcode & 0x38) == 0x30) {
+
+                // Skip one extra byte on RST 08H/30H, since on the Aq these
+                // system calls absorb the byte following this instruction.
+                tmpBreakpoint++;
+            }
+            emuMode = Em_Running;
+
+        } else if (opcode == 0xED) {
+            opcode = memRead(z80ctx.PC + 1);
+            if (opcode == 0xB9 || // CPDR
+                opcode == 0xB1 || // CPIR
+                opcode == 0xBA || // INDR
+                opcode == 0xB2 || // INIR
+                opcode == 0xB8 || // LDDR
+                opcode == 0xB0 || // LDIR
+                opcode == 0xBB || // OTDR
+                opcode == 0xB3) { // OTIR
+            }
+            tmpBreakpoint = z80ctx.PC + 2;
+            emuMode       = Em_Running;
+
+        } else {
+            stepInto();
+        }
+    }
+}
+
+void Z80Core::stepOut() {
+    haltAfterRet = 0;
+    emuMode      = Em_Running;
+}
+
+void Z80Core::go() {
+    tmpBreakpoint = -1;
+    haltAfterRet  = -1;
+    emuMode       = Em_Running;
+}
+
+uint8_t Z80Core::z80InstrRead(uint16_t addr) {
+    return memRead(addr);
+}
+
+uint8_t Z80Core::z80MemRead(uint16_t addr) {
+    if (enableBreakpoints) {
         for (int i = 0; i < (int)breakpoints.size(); i++) {
             auto &bp = breakpoints[i];
-            if (bp.enabled && bp.onR && bp.type == 0 && addr == bp.addr && bp.addr != lastBpAddress) {
-                emuMode       = Em_Halted;
-                lastBp        = i;
-                lastBpAddress = bp.addr;
+            if (bp.enabled && bp.onR && bp.type == BpType::Mem && addr == bp.addr && bp.addr != lastBpAddress) {
+                emuMode          = Em_Halted;
+                lastBp           = i;
+                lastBpAddress    = bp.addr;
+                lastBpAccessType = 1;
             }
         }
     }
     return memRead(addr);
 }
 
-void Z80Core::z80MemWrite(uint16_t addr, uint8_t data, bool triggerBp) {
-    if (enableBreakpoints && triggerBp) {
+void Z80Core::z80MemWrite(uint16_t addr, uint8_t data) {
+    if (enableBreakpoints) {
         for (int i = 0; i < (int)breakpoints.size(); i++) {
             auto &bp = breakpoints[i];
-            if (bp.enabled && bp.onW && bp.type == 0 && addr == bp.addr && bp.addr != lastBpAddress) {
-                emuMode       = Em_Halted;
-                lastBp        = i;
-                lastBpAddress = bp.addr;
+            if (bp.enabled && bp.onW && bp.type == BpType::Mem && addr == bp.addr && bp.addr != lastBpAddress) {
+                emuMode          = Em_Halted;
+                lastBp           = i;
+                lastBpAddress    = bp.addr;
+                lastBpAccessType = 2;
             }
         }
     }
     memWrite(addr, data);
 }
 
-uint8_t Z80Core::z80IoRead(uint16_t addr, bool triggerBp) {
-    if (enableBreakpoints && triggerBp) {
+uint8_t Z80Core::z80IoRead(uint16_t addr) {
+    if (enableBreakpoints) {
         for (int i = 0; i < (int)breakpoints.size(); i++) {
             auto &bp = breakpoints[i];
-            if (bp.enabled && bp.onR && ((bp.type == 1 && (addr & 0xFF) == (bp.addr & 0xFF)) || (bp.type == 2 && addr == bp.addr))) {
+            if (bp.enabled && bp.onR && ((bp.type == BpType::Io8 && (addr & 0xFF) == (bp.addr & 0xFF)) || (bp.type == BpType::Io16 && addr == bp.addr))) {
                 emuMode = Em_Halted;
-                lastBp  = i;
             }
         }
     }
     return ioRead(addr);
 }
 
-void Z80Core::z80IoWrite(uint16_t addr, uint8_t data, bool triggerBp) {
-    if (enableBreakpoints && triggerBp) {
+void Z80Core::z80IoWrite(uint16_t addr, uint8_t data) {
+    if (enableBreakpoints) {
         for (int i = 0; i < (int)breakpoints.size(); i++) {
             auto &bp = breakpoints[i];
-            if (bp.enabled && bp.onW && ((bp.type == 1 && (addr & 0xFF) == (bp.addr & 0xFF)) || (bp.type == 2 && addr == bp.addr))) {
+            if (bp.enabled && bp.onW && ((bp.type == BpType::Io8 && (addr & 0xFF) == (bp.addr & 0xFF)) || (bp.type == BpType::Io16 && addr == bp.addr))) {
                 emuMode = Em_Halted;
-                lastBp  = i;
             }
         }
     }
@@ -274,86 +370,42 @@ void Z80Core::dbgWndCpuState(bool *p_open) {
 
         ImGui::PushStyleColor(ImGuiCol_Button, emuMode == Em_Halted ? (ImVec4)ImColor(192, 0, 0) : ImGui::GetStyle().Colors[ImGuiCol_Button]);
         ImGui::BeginDisabled(emuMode != Em_Running);
-        ImGui::SetNextItemShortcut(ImGuiMod_Shift | ImGuiKey_F5, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Tooltip);
-        if (ImGui::Button("Halt")) {
-            emuMode = Em_Halted;
+        {
+            ImGui::SetNextItemShortcut(ImGuiMod_Shift | ImGuiKey_F5, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Tooltip);
+            if (ImGui::Button("Halt"))
+                halt();
+            ImGui::EndDisabled();
         }
-        ImGui::EndDisabled();
         ImGui::PopStyleColor();
 
         ImGui::BeginDisabled(emuMode == Em_Running);
-        ImGui::SameLine();
+        {
+            ImGui::SameLine();
+            ImGui::SetNextItemShortcut(ImGuiKey_F11, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Tooltip);
+            if (ImGui::Button("Step Into"))
+                stepInto();
 
-        ImGui::SetNextItemShortcut(ImGuiKey_F11, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Tooltip);
-        if (ImGui::Button("Step Into")) {
-            emuMode = Em_Step;
+            ImGui::SameLine();
+            ImGui::SetNextItemShortcut(ImGuiKey_F10, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Tooltip);
+            if (ImGui::Button("Step Over"))
+                stepOver();
+
+            ImGui::SameLine();
+            ImGui::SetNextItemShortcut(ImGuiMod_Shift | ImGuiKey_F10, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Tooltip);
+            if (ImGui::Button("Step Out"))
+                stepOut();
+
+            ImGui::SameLine();
+            ImGui::PushStyleColor(ImGuiCol_Button, emuMode == Em_Running ? (ImVec4)ImColor(0, 128, 0) : ImGui::GetStyle().Colors[ImGuiCol_Button]);
+            ImGui::SetNextItemShortcut(ImGuiKey_F5, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Tooltip);
+            if (ImGui::Button("Go"))
+                go();
+            ImGui::PopStyleColor();
         }
-        ImGui::SameLine();
-
-        ImGui::SetNextItemShortcut(ImGuiKey_F10, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Tooltip);
-        if (ImGui::Button("Step Over")) {
-            tmpBreakpoint = -1;
-
-            if (z80ctx.halted) {
-                // Step over HALT instruction
-                z80ctx.halted = 0;
-                z80ctx.PC++;
-            } else {
-                uint8_t opcode = memRead(z80ctx.PC);
-                if (opcode == 0xCD ||          // CALL nn
-                    (opcode & 0xC7) == 0xC4) { // CALL c,nn
-
-                    tmpBreakpoint = z80ctx.PC + 3;
-
-                } else if ((opcode & 0xC7) == 0xC7) { // RST
-                    tmpBreakpoint = z80ctx.PC + 1;
-                    if ((opcode & 0x38) == 0x08 ||
-                        (opcode & 0x38) == 0x30) {
-
-                        // Skip one extra byte on RST 08H/30H, since on the Aq these
-                        // system calls absorb the byte following this instruction.
-                        tmpBreakpoint++;
-                    }
-
-                } else if (opcode == 0xED) {
-                    opcode = memRead(z80ctx.PC + 1);
-                    if (opcode == 0xB9 || // CPDR
-                        opcode == 0xB1 || // CPIR
-                        opcode == 0xBA || // INDR
-                        opcode == 0xB2 || // INIR
-                        opcode == 0xB8 || // LDDR
-                        opcode == 0xB0 || // LDIR
-                        opcode == 0xBB || // OTDR
-                        opcode == 0xB3) { // OTIR
-                    }
-                    tmpBreakpoint = z80ctx.PC + 2;
-                }
-                if (tmpBreakpoint >= 0) {
-                    emuMode = Em_Running;
-                } else {
-                    emuMode = Em_Step;
-                }
-            }
-        }
-
-        ImGui::SameLine();
-        ImGui::SetNextItemShortcut(ImGuiMod_Shift | ImGuiKey_F10, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Tooltip);
-        if (ImGui::Button("Step Out")) {
-            haltAfterRet = 0;
-            emuMode      = Em_Running;
-        }
-        ImGui::SameLine();
-
-        ImGui::PushStyleColor(ImGuiCol_Button, emuMode == Em_Running ? (ImVec4)ImColor(0, 128, 0) : ImGui::GetStyle().Colors[ImGuiCol_Button]);
-        ImGui::SetNextItemShortcut(ImGuiKey_F5, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Tooltip);
-        if (ImGui::Button("Go")) {
-            emuMode = Em_Running;
-        }
-        ImGui::PopStyleColor();
         ImGui::EndDisabled();
-
         ImGui::Separator();
 
+        // Symbol
         {
             uint16_t    addr = z80ctx.PC;
             std::string name;
@@ -363,17 +415,12 @@ void Z80Core::dbgWndCpuState(bool *p_open) {
             }
         }
 
+        // Decoded instruction
         {
-            char tmp1[64];
-            char tmp2[64];
-            z80ctx.tstates = 0;
-
-            bool prevEnableBp = enableBreakpoints;
-            enableBreakpoints = false;
-            Z80Debug(&z80ctx, tmp1, tmp2);
-            enableBreakpoints = prevEnableBp;
-
-            ImGui::Text("         %-12s %s", tmp1, tmp2);
+            char hex[32];
+            char instr[32];
+            decodeInstruction(hex, instr);
+            ImGui::Text("         %-12s %s", hex, instr);
         }
         ImGui::Separator();
 
@@ -506,8 +553,11 @@ void Z80Core::dbgWndBreakpoints(bool *p_open) {
             while (clipper.Step()) {
                 for (int row_n = clipper.DisplayStart; row_n < clipper.DisplayEnd; row_n++) {
                     auto &bp = breakpoints[row_n];
-
                     ImGui::TableNextRow();
+
+                    if (row_n == lastBp)
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32((ImVec4)ImColor(128, 0, 128)));
+
                     ImGui::TableNextColumn();
                     ImGui::Checkbox(fmtstr("##en%d", row_n).c_str(), &bp.enabled);
                     ImGui::TableNextColumn();
@@ -525,21 +575,32 @@ void Z80Core::dbgWndBreakpoints(bool *p_open) {
                         ImGui::EndCombo();
                     }
                     ImGui::TableNextColumn();
+
+                    if (row_n == lastBp && lastBpAccessType == 1)
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, ImGui::GetColorU32((ImVec4)ImColor(255, 0, 255)));
+
                     ImGui::Checkbox(fmtstr("##onR%d", row_n).c_str(), &bp.onR);
                     ImGui::TableNextColumn();
+
+                    if (row_n == lastBp && lastBpAccessType == 2)
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, ImGui::GetColorU32((ImVec4)ImColor(255, 0, 255)));
+
                     ImGui::Checkbox(fmtstr("##onW%d", row_n).c_str(), &bp.onW);
                     ImGui::TableNextColumn();
+
+                    if (row_n == lastBp && lastBpAccessType == 3)
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, ImGui::GetColorU32((ImVec4)ImColor(255, 0, 255)));
+
                     ImGui::Checkbox(fmtstr("##onX%d", row_n).c_str(), &bp.onX);
                     ImGui::TableNextColumn();
                     ImGui::SetNextItemWidth(ImGui::CalcTextSize("F").x * 9);
 
                     static const char *types[] = {"Mem", "IO 8", "IO 16"};
-                    if (ImGui::BeginCombo(fmtstr("##type%d", row_n).c_str(), types[bp.type])) {
-                        for (int i = 0; i < 3; i++) {
-                            if (ImGui::Selectable(types[i])) {
-                                bp.type = i;
-                            }
-                        }
+                    if (ImGui::BeginCombo(fmtstr("##type%d", row_n).c_str(), types[(int)bp.type])) {
+                        for (int i = 0; i < 3; i++)
+                            if (ImGui::Selectable(types[i]))
+                                bp.type = (BpType)i;
+
                         ImGui::EndCombo();
                     }
                     ImGui::TableNextColumn();

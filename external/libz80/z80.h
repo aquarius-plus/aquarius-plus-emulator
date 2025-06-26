@@ -88,6 +88,7 @@ typedef struct
     uint8_t  IFF2; /**< Interrupt Flipflop 2 */
     uint8_t  IM;   /**< Instruction mode */
 
+    Z80DataIn  instrRead;
     Z80DataIn  memRead;
     Z80DataOut memWrite;
     uintptr_t  memParam;

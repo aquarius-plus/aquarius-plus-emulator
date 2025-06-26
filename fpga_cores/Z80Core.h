@@ -19,35 +19,25 @@ public:
     void saveConfig(cJSON *root);
     int  emulate();
     void reset();
-    void setEnableDebugger(bool en) {
-        enableDebugger = en;
-        if (!enableDebugger) {
-            // Always run when not debugging
-            emuMode = Em_Running;
-        }
-    }
-    void pendIrq() { Z80INT(&z80ctx, 0xFF); } // used by aqms core
-
+    void setEnableDebugger(bool en) { enableDebugger = en; }
     void dbgMenu();
     void dbgWindows();
-
-    int lastBpAddress = -1;
-    int tmpBreakpoint = -1;
-    int haltAfterRet  = -1;
 
 private:
     // Z80 emulation core
     Z80Context z80ctx;
 
-    static uint8_t _z80MemRead(uintptr_t param, uint16_t addr);
-    static void    _z80MemWrite(uintptr_t param, uint16_t addr, uint8_t data);
-    static uint8_t _z80IoRead(uintptr_t param, uint16_t addr);
-    static void    _z80IoWrite(uintptr_t param, uint16_t addr, uint8_t data);
+    static uint8_t _z80InstrRead(uintptr_t param, uint16_t addr) { return reinterpret_cast<Z80Core *>(param)->z80InstrRead(addr); }
+    static uint8_t _z80MemRead(uintptr_t param, uint16_t addr) { return reinterpret_cast<Z80Core *>(param)->z80MemRead(addr); }
+    static void    _z80MemWrite(uintptr_t param, uint16_t addr, uint8_t data) { reinterpret_cast<Z80Core *>(param)->z80MemWrite(addr, data); }
+    static uint8_t _z80IoRead(uintptr_t param, uint16_t addr) { return reinterpret_cast<Z80Core *>(param)->z80IoRead(addr); }
+    static void    _z80IoWrite(uintptr_t param, uint16_t addr, uint8_t data) { reinterpret_cast<Z80Core *>(param)->z80IoWrite(addr, data); }
 
-    uint8_t z80MemRead(uint16_t addr, bool triggerBp);
-    void    z80MemWrite(uint16_t addr, uint8_t data, bool triggerBp);
-    uint8_t z80IoRead(uint16_t addr, bool triggerBp);
-    void    z80IoWrite(uint16_t addr, uint8_t data, bool triggerBp);
+    uint8_t z80InstrRead(uint16_t addr);
+    uint8_t z80MemRead(uint16_t addr);
+    void    z80MemWrite(uint16_t addr, uint8_t data);
+    uint8_t z80IoRead(uint16_t addr);
+    void    z80IoWrite(uint16_t addr, uint8_t data);
 
     // Current mode
     enum EmuMode {
@@ -62,18 +52,30 @@ private:
     // Breakpoints
     bool enableBreakpoints = false;
 
+    enum class BpType {
+        Mem  = 0,
+        Io8  = 1,
+        Io16 = 2,
+    };
+
     struct Breakpoint {
         uint16_t    addr = 0;
         std::string name;
         bool        enabled = false;
-        int         type    = 0;
+        BpType      type    = BpType::Mem;
         bool        onR     = true;
         bool        onW     = true;
         bool        onX     = true;
     };
 
     std::vector<Breakpoint> breakpoints;
-    int                     lastBp = -1;
+    int                     lastBp           = 0;
+    int                     lastBpAddress    = -1;
+    unsigned                lastBpAccessType = 0;
+    int                     tmpBreakpoint    = -1;
+    int                     haltAfterRet     = -1;
+
+    bool checkExecuteBreakpoints();
 
     // Assembly listing
     AssemblyListing asmListing;
@@ -113,6 +115,13 @@ private:
     bool showCpuTrace        = false;
     bool showWatch           = false;
     bool stopOnHalt          = false; // Stop the CPU when a HALT instruction is executed.
+
+    void decodeInstruction(char hex[32], char instr[32]);
+    void halt();
+    void stepInto();
+    void stepOver();
+    void stepOut();
+    void go();
 
     void dbgWndCpuState(bool *p_open);
     void dbgWndBreakpoints(bool *p_open);
