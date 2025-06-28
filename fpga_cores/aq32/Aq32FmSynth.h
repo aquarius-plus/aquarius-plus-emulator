@@ -2,9 +2,9 @@
 
 #include "Common.h"
 
-class Aq32Audio {
+class Aq32FmSynth {
 public:
-    Aq32Audio();
+    Aq32FmSynth();
     void reset();
     void render(int16_t results[2]);
 

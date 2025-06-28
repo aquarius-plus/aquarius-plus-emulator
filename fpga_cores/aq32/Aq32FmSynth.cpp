@@ -1,4 +1,4 @@
-#include "Aq32Audio.h"
+#include "Aq32FmSynth.h"
 #include "imgui.h"
 
 enum {
@@ -115,11 +115,11 @@ static const uint8_t lut_pan_r[128] = {
 static const uint8_t mult_lut[16] = {1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 20, 24, 24, 30, 30};
 static const uint8_t ksl_lut[16]  = {0, 32, 40, 45, 48, 51, 53, 55, 56, 58, 59, 60, 61, 62, 63, 64};
 
-Aq32Audio::Aq32Audio() {
+Aq32FmSynth::Aq32FmSynth() {
     reset();
 }
 
-void Aq32Audio::reset() {
+void Aq32FmSynth::reset() {
     reg0_ch_4op = 0;
     reg1        = 0;
     reg2_kon    = 0;
@@ -139,7 +139,7 @@ void Aq32Audio::reset() {
     }
 }
 
-void Aq32Audio::render(int16_t results[2]) {
+void Aq32FmSynth::render(int16_t results[2]) {
     bool dam = (reg1 >> 7) & 1;
     bool dvb = (reg1 >> 6) & 1;
 
@@ -375,7 +375,7 @@ void Aq32Audio::render(int16_t results[2]) {
     results[1] = std::min(std::max(-32768, accum_r), 32767);
 }
 
-void Aq32Audio::dbgDrawIoRegs() {
+void Aq32FmSynth::dbgDrawIoRegs() {
     ImGui::Text("reg0_ch_4op: 0x%04X", reg0_ch_4op);
     ImGui::Text("reg1: 0x%04X", reg1);
     ImGui::Text("reg2_kon: 0x%08X", reg2_kon);

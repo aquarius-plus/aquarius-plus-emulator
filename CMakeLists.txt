@@ -65,7 +65,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 
     fpga_cores/aq32/Aq32EmuState.cpp
     fpga_cores/aq32/Aq32Video.cpp
-    fpga_cores/aq32/Aq32Audio.cpp
+    fpga_cores/aq32/Aq32FmSynth.cpp
+    fpga_cores/aq32/Aq32Pcm.cpp
     fpga_cores/aq32/cpu/riscv.cpp
     fpga_cores/aq32/cpu/riscv_util.cpp
 

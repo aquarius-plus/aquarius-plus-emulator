@@ -6,7 +6,8 @@
 #include "Config.h"
 #include "bootrom.h"
 #include "Aq32Video.h"
-#include "Aq32Audio.h"
+#include "Aq32FmSynth.h"
+#include "Aq32Pcm.h"
 #include "imgui.h"
 #include "Keyboard.h"
 
@@ -27,23 +28,27 @@
 #define HCYCLES_PER_LINE   (455)
 #define HCYCLES_PER_SAMPLE (162)
 
-#define BASE_BOOTROM  0x00000
-#define REG_ESPCTRL   0x02000
-#define REG_ESPDATA   0x02004
-#define REG_VCTRL     0x02008
-#define REG_VSCRX     0x0200C
-#define REG_VSCRY     0x02010
-#define REG_VLINE     0x02014
-#define REG_VIRQLINE  0x02018
-#define REG_KEYBUF    0x0201C
-#define BASE_FMSYNTH  0x02800
-#define BASE_SPRATTR  0x03000
-#define BASE_PALETTE  0x04000
-#define BASE_CHRAM    0x05000
-#define BASE_TEXTRAM  0x06000
-#define BASE_VRAM     0x08000
-#define BASE_VRAM4BIT 0x10000
-#define BASE_MAINRAM  0x80000
+#define BASE_BOOTROM      0x00000
+#define REG_ESPCTRL       0x02000
+#define REG_ESPDATA       0x02004
+#define REG_VCTRL         0x02008
+#define REG_VSCRX         0x0200C
+#define REG_VSCRY         0x02010
+#define REG_VLINE         0x02014
+#define REG_VIRQLINE      0x02018
+#define REG_KEYBUF        0x0201C
+#define REG_PCM_STATUS    0x02400
+#define REG_PCM_FIFO_CTRL 0x02404
+#define REG_PCM_RATE      0x02408
+#define REG_PCM_FIFO_DATA 0x0240C
+#define BASE_FMSYNTH      0x02800
+#define BASE_SPRATTR      0x03000
+#define BASE_PALETTE      0x04000
+#define BASE_CHRAM        0x05000
+#define BASE_TEXTRAM      0x06000
+#define BASE_VRAM         0x08000
+#define BASE_VRAM4BIT     0x10000
+#define BASE_MAINRAM      0x80000
 
 // #define ALLOW_UNALIGNED
 
@@ -86,7 +91,8 @@ class Aq32EmuState : public EmuState {
 public:
     riscv                cpu;
     Aq32Video            video;
-    Aq32Audio            audio;
+    Aq32FmSynth          fmsynth;
+    Aq32Pcm              pcm;
     uint8_t              keybMatrix[8] = {0};
     std::deque<uint16_t> kbBuf;
     const unsigned       kbBufSize  = 16;
@@ -98,8 +104,8 @@ public:
     std::recursive_mutex mutex;
     uint32_t             mainRam[512 * 1024 / 4];
     uint32_t             bootRom[0x800 / 4];
-    int                  cur_line                 = -1;
-    int                  cur_line_steps_remaining = 0;
+    int                  curLine               = -1;
+    int                  curLineStepsRemaining = 0;
 
 #ifdef GDB_ENABLE
     // GDB interface
@@ -183,7 +189,8 @@ public:
 
         kbBuf.clear();
         video.reset();
-        audio.reset();
+        fmsynth.reset();
+        pcm.reset();
     }
 
     void loadConfig() {
@@ -381,20 +388,26 @@ public:
                     kbBuf.pop_front();
             }
             return result;
+        } else if (addr == REG_PCM_STATUS || addr == REG_PCM_FIFO_DATA) {
+            return pcm.data.size();
+        } else if (addr == REG_PCM_FIFO_CTRL) {
+            return pcm.fifoIrqThreshold;
+        } else if (addr == REG_PCM_RATE) {
+            return pcm.rate;
         } else if (addr >= BASE_FMSYNTH && addr < (BASE_FMSYNTH + 256 * 4)) {
             unsigned idx = (addr >> 2) & 255;
             if (idx == 0)
-                return audio.reg0_ch_4op;
+                return fmsynth.reg0_ch_4op;
             else if (idx == 1)
-                return audio.reg1;
+                return fmsynth.reg1;
             else if (idx == 2)
-                return audio.reg2_kon;
+                return fmsynth.reg2_kon;
             else if (idx >= 96 && idx <= 127)
-                return audio.ch_attr[idx - 96];
+                return fmsynth.ch_attr[idx - 96];
             else if (idx >= 128 && idx <= 191)
-                return audio.op_attr0[idx - 128];
+                return fmsynth.op_attr0[idx - 128];
             else if (idx >= 192 && idx <= 255)
-                return audio.op_attr1[idx - 192];
+                return fmsynth.op_attr1[idx - 192];
 
         } else if (addr >= BASE_SPRATTR && addr < (BASE_SPRATTR + 64 * 8)) {
             // Sprite attributes (32b)
@@ -454,20 +467,29 @@ public:
             video.videoIrqLine = val & 0xFF;
         } else if (addr == REG_KEYBUF) {
             kbBuf.clear();
+        } else if (addr == REG_PCM_STATUS) {
+            pcm.data.clear();
+        } else if (addr == REG_PCM_FIFO_CTRL) {
+            pcm.fifoIrqThreshold = val & 0x3FF;
+        } else if (addr == REG_PCM_RATE) {
+            pcm.rate = val & 0xFFF;
+        } else if (addr == REG_PCM_FIFO_DATA) {
+            if (pcm.data.size() < 1023)
+                pcm.data.push_back(val);
         } else if (addr >= BASE_FMSYNTH && addr < (BASE_FMSYNTH + 256 * 4)) {
             unsigned idx = (addr >> 2) & 255;
             if (idx == 0)
-                audio.reg0_ch_4op = val & 0xFFFF;
+                fmsynth.reg0_ch_4op = val & 0xFFFF;
             else if (idx == 1)
-                audio.reg1 = val & 0x00C0;
+                fmsynth.reg1 = val & 0x00C0;
             else if (idx == 2) {
-                audio.reg2_kon = val;
+                fmsynth.reg2_kon = val;
             } else if (idx >= 96 && idx <= 127)
-                audio.ch_attr[idx - 96] = val & 0x07FF1FFF;
+                fmsynth.ch_attr[idx - 96] = val & 0x07FF1FFF;
             else if (idx >= 128 && idx <= 191)
-                audio.op_attr0[idx - 128] = val;
+                fmsynth.op_attr0[idx - 128] = val;
             else if (idx >= 192 && idx <= 255)
-                audio.op_attr1[idx - 192] = val & 7;
+                fmsynth.op_attr1[idx - 192] = val & 7;
         } else if (addr >= BASE_SPRATTR && addr < (BASE_SPRATTR + 64 * 8)) {
             // Sprite attributes (32b)
             int sprIdx = (addr >> 3) & 63;
@@ -528,23 +550,33 @@ public:
         if (emuMode == Em_Halted)
             return true;
 
-        if (cur_line_steps_remaining <= 0) {
-            cur_line++;
-            cur_line_steps_remaining = 10000000 / 60 / 262;
+        if (curLineStepsRemaining <= 0) {
+            curLine++;
+            curLineStepsRemaining = 10000000 / 60 / 262;
 
-            if (cur_line == 262) {
-                cur_line     = 0;
-                end_of_frame = true;
-
+            if (video.isOnStartOfVBlank())
                 cpu.pendInterrupt(1 << 16);
+            if (video.isOnVideoIrqLine())
+                cpu.pendInterrupt(1 << 17);
+
+            if (curLine == 262) {
+                curLine      = 0;
+                end_of_frame = true;
             }
 
-            video.drawLine(cur_line);
+            video.drawLine(curLine);
             keyboardTypeIn();
+
+            if (pcm.hasIrq())
+                cpu.pendInterrupt(1 << 18);
+            if (!kbBuf.empty())
+                cpu.pendInterrupt(1 << 19);
+            if (UartProtocol::instance()->readCtrl() & 1)
+                cpu.pendInterrupt(1 << 20);
         }
 
         cpu.emulate();
-        cur_line_steps_remaining--;
+        curLineStepsRemaining--;
 
         if (enableDebugger && enableBreakpoints) {
             for (auto &bp : breakpoints) {
@@ -578,7 +610,14 @@ public:
             memset(audioBuf, 0, numSamples * sizeof(*audioBuf) * 2);
 
             for (unsigned i = 0; i < numSamples; i++) {
-                audio.render(audioBuf);
+                int16_t fmResults[2];
+                fmsynth.render(fmResults);
+
+                int16_t pcmResults[2];
+                pcm.render(pcmResults);
+
+                audioBuf[0] = std::min(std::max(-32768, fmResults[0] + pcmResults[0]), 32767);
+                audioBuf[1] = std::min(std::max(-32768, fmResults[1] + pcmResults[1]), 32767);
                 audioBuf += 2;
             }
         }
@@ -626,7 +665,7 @@ public:
                 video.dbgDrawIoRegs();
             }
             if (ImGui::CollapsingHeader("Audio")) {
-                audio.dbgDrawIoRegs();
+                fmsynth.dbgDrawIoRegs();
             }
             if (ImGui::CollapsingHeader("Sprites")) {
                 video.dbgDrawSpriteRegs();
