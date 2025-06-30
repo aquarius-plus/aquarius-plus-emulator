@@ -157,6 +157,12 @@ std::string instrToString(uint32_t instr, uint32_t curpc) {
                     case 0x342: csrStr = "mcause"; break;
                     case 0x343: csrStr = "mtval"; break;
                     case 0x344: csrStr = "mip"; break;
+                    case 0xB00: csrStr = "mcycle"; break;
+                    case 0xB80: csrStr = "mcycleh"; break;
+                    case 0xC00: csrStr = "cycle"; break;
+                    case 0xC80: csrStr = "cycleh"; break;
+                    case 0xC01: csrStr = "time"; break;
+                    case 0xC81: csrStr = "timeh"; break;
                     default: csrStr = fmtstr("0x%X", csr); break;
                 }
 

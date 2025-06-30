@@ -12,6 +12,8 @@ static uint32_t __inline __builtin_clz(uint32_t x) {
 #endif
 
 void riscv::emulate() {
+    mcycle += 2;
+
     this->trap     = TRAP_NONE;
     uint32_t curpc = this->pc;
     uint32_t newpc = curpc + 4;
@@ -71,6 +73,7 @@ void riscv::emulate() {
             }
 
             case 0b0000011: { // Load
+                mcycle += 1;
                 int32_t imm = instr >> 20;
                 if (imm & 0x800)
                     imm |= 0xFFFFF000;
@@ -90,6 +93,7 @@ void riscv::emulate() {
             }
 
             case 0b0100011: { // Store
+                mcycle += 1;
                 int32_t imm = ((instr >> 7) & 0x1F) | ((instr & 0xFE000000) >> 20);
                 if (imm & 0x800)
                     imm |= 0xFFFFF000;
@@ -229,6 +233,12 @@ void riscv::emulate() {
                         case 0x342: rd_val = this->mcause; break;
                         case 0x343: rd_val = this->mtval; break;
                         case 0x344: rd_val = this->mip; break;
+                        case 0xC00:
+                        case 0xB00: rd_val = this->mcycle & 0xFFFFFFFF; break;
+                        case 0xC80:
+                        case 0xB80: rd_val = this->mcycle >> 32; break;
+                        case 0xC01: rd_val = this->mtime & 0xFFFFFFFF; break;
+                        case 0xC81: rd_val = this->mtime >> 32; break;
                     }
 
                     // Determine new CSR value
@@ -254,6 +264,10 @@ void riscv::emulate() {
                         case 0x342: this->mcause = newcsr; break;
                         case 0x343: this->mtval = newcsr; break;
                         case 0x344: this->mip = newcsr; break;
+                        case 0xC00:
+                        case 0xB00: this->mcycle = (this->mcycle & ~(uint64_t)0xFFFFFFFFUL) | newcsr; break;
+                        case 0xC80:
+                        case 0xB80: this->mcycle = (this->mcycle & (uint64_t)0xFFFFFFFFUL) | ((uint64_t)newcsr << 32U); break;
                     }
                 }
                 break;

@@ -35,6 +35,9 @@ struct riscv {
     uint32_t mcause;       // 0x342 (MRW) Machine trap cause
     uint32_t mtval;        // 0x343 (MRW) Machine bad address or instruction
     uint32_t mip;          // 0x344 (MRW) Machine interrupt pending
+    uint64_t mcycle;       // 0xB00/0xB80 and 0xC00/0xC80
+    uint64_t mtime;        // 0xC01/0xC81
+    uint64_t mtimecmp;
 
     // Internal state
     uint32_t trap;

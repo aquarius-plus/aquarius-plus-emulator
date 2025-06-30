@@ -10,6 +10,7 @@
 #include "Aq32Pcm.h"
 #include "imgui.h"
 #include "Keyboard.h"
+#include <chrono>
 
 #ifndef WIN32
 #define GDB_ENABLE
@@ -37,6 +38,10 @@
 #define REG_VLINE         0x02014
 #define REG_VIRQLINE      0x02018
 #define REG_KEYBUF        0x0201C
+#define REG_MTIME         0x02080
+#define REG_MTIMEH        0x02084
+#define REG_MTIMECMP      0x02088
+#define REG_MTIMECMPH     0x0208C
 #define REG_PCM_STATUS    0x02400
 #define REG_PCM_FIFO_CTRL 0x02404
 #define REG_PCM_RATE      0x02408
@@ -84,8 +89,11 @@ static std::vector<uint8_t> decodeHex(const char *p, size_t size) {
     }
     return data;
 }
-
 #endif
+
+static uint64_t now_ms() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
 
 class Aq32EmuState : public EmuState {
 public:
@@ -106,6 +114,8 @@ public:
     uint32_t             bootRom[0x800 / 4];
     int                  curLine               = -1;
     int                  curLineStepsRemaining = 0;
+    uint64_t             mtimecmp              = 0;
+    uint64_t             mtimeDiff             = 0;
 
 #ifdef GDB_ENABLE
     // GDB interface
@@ -172,6 +182,14 @@ public:
 #endif
     }
 
+    void setMtime(uint64_t newVal) {
+        mtimeDiff = newVal - now_ms();
+        cpu.mtime = newVal;
+    }
+    uint64_t getMtime() {
+        return now_ms() + mtimeDiff;
+    }
+
     void reset(bool cold = false) override {
         // CPU reset
         cpu.regs[0]      = 0;
@@ -186,6 +204,8 @@ public:
         cpu.mtval        = 0;
         cpu.mip          = 0;
         cpu.trap         = 0;
+        setMtime(0);
+        mtimecmp = 0;
 
         kbBuf.clear();
         video.reset();
@@ -388,6 +408,16 @@ public:
                     kbBuf.pop_front();
             }
             return result;
+        } else if (addr == REG_MTIME) {
+            uint64_t mtime = getMtime();
+            return (uint32_t)(mtime & 0xFFFFFFFFUL);
+        } else if (addr == REG_MTIMEH) {
+            uint64_t mtime = getMtime();
+            return (uint32_t)(mtime >> 32);
+        } else if (addr == REG_MTIMECMP) {
+            return cpu.mtimecmp;
+        } else if (addr == REG_MTIMECMPH) {
+            return cpu.mtimecmp >> 32;
         } else if (addr == REG_PCM_STATUS || addr == REG_PCM_FIFO_DATA) {
             return pcm.data.size();
         } else if (addr == REG_PCM_FIFO_CTRL) {
@@ -467,6 +497,16 @@ public:
             video.videoIrqLine = val & 0xFF;
         } else if (addr == REG_KEYBUF) {
             kbBuf.clear();
+        } else if (addr == REG_MTIME) {
+            uint64_t mtime = getMtime();
+            setMtime((mtime & ~(uint64_t)0xFFFFFFFFU) | val);
+        } else if (addr == REG_MTIMEH) {
+            uint64_t mtime = getMtime();
+            setMtime((mtime & 0xFFFFFFFFU) | ((uint64_t)val << 32U));
+        } else if (addr == REG_MTIMECMP) {
+            cpu.mtimecmp = (cpu.mtimecmp & ~(uint64_t)0xFFFFFFFFU) | val;
+        } else if (addr == REG_MTIMECMPH) {
+            cpu.mtimecmp = (cpu.mtimecmp & 0xFFFFFFFFU) | ((uint64_t)val << 32U);
         } else if (addr == REG_PCM_STATUS) {
             pcm.data.clear();
         } else if (addr == REG_PCM_FIFO_CTRL) {
@@ -573,6 +613,10 @@ public:
                 cpu.pendInterrupt(1 << 19);
             if (UartProtocol::instance()->readCtrl() & 1)
                 cpu.pendInterrupt(1 << 20);
+
+            cpu.mtime = getMtime();
+            if (cpu.mtime >= cpu.mtimecmp)
+                cpu.pendInterrupt(1 << 7);
         }
 
         cpu.emulate();
