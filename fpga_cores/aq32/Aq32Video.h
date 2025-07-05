@@ -16,7 +16,7 @@ public:
     Aq32Video();
     const uint16_t *getFb() { return screen; }
 
-    static const int activeWidth  = 704;
+    static const int activeWidth  = 640;
     static const int activeHeight = 240;
 
     bool isOnVideoIrqLine() { return videoLine == videoIrqLine; }
@@ -29,7 +29,7 @@ public:
     void dbgDrawSpriteRegs();
     void dbgDrawPaletteRegs();
 
-    alignas(4) uint16_t textRam[2048];      // Screen RAM for text mode
+    alignas(4) uint16_t textRam[4096];      // Screen RAM for text mode
     alignas(4) uint8_t videoRam[32 * 1024]; // Video RAM
     alignas(4) uint8_t charRam[2048];       // Character RAM
     uint16_t videoPalette[64] = {0};        // Video palette

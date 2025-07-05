@@ -237,23 +237,17 @@ public:
 
     void getVideoSize(int &w, int &h) override {
         std::lock_guard lock(mutex);
-        w = 640;
-        h = 480;
+        w = Aq32Video::activeWidth;
+        h = Aq32Video::activeHeight * 2;
     }
 
     void getPixels(void *pixels, int pitch) override {
         std::lock_guard lock(mutex);
         const uint16_t *fb = video.getFb();
-
-        bool videoMode    = true;
-        auto activeWidth  = Aq32Video::activeWidth;
-        auto activeHeight = Aq32Video::activeHeight;
-        int  w            = videoMode ? 640 : Aq32Video::activeWidth;
-
-        for (int j = 0; j < activeHeight * 2; j++) {
-            for (int i = 0; i < w; i++) {
+        for (int j = 0; j < Aq32Video::activeHeight * 2; j++) {
+            for (int i = 0; i < Aq32Video::activeWidth; i++) {
                 ((uint32_t *)((uintptr_t)pixels + j * pitch))[i] =
-                    col12_to_col32(fb[(j / 2) * activeWidth + (videoMode ? (i + 32) : i)]);
+                    col12_to_col32(fb[(j / 2) * Aq32Video::activeWidth + i]);
             }
         }
         renderOverlay(pixels, pitch);
@@ -456,9 +450,8 @@ public:
             uint8_t val = video.charRam[addr & (sizeof(video.charRam) - 1)];
             return val | (val << 8) | (val << 16) | (val << 24);
         } else if (addr >= BASE_TEXTRAM && addr < (BASE_TEXTRAM + sizeof(video.textRam))) {
-            // Text RAM (8b/16b)
-            uint32_t val = video.textRam[(addr & (sizeof(video.textRam) - 1)) / 2];
-            return val | (val << 16);
+            // Text RAM (8b/16/32b)
+            return reinterpret_cast<uint32_t *>(video.textRam)[(addr & (sizeof(video.textRam) - 1)) / 4];
         } else if (addr >= BASE_VRAM && addr < (BASE_VRAM + sizeof(video.videoRam))) {
             // Video RAM (8/16/32b)
             return reinterpret_cast<uint32_t *>(video.videoRam)[(addr & (sizeof(video.videoRam) - 1)) / 4];
@@ -547,11 +540,9 @@ public:
             video.charRam[addr & (sizeof(video.charRam) - 1)] = val & 0xFF;
         } else if (addr >= BASE_TEXTRAM && addr < (BASE_TEXTRAM + sizeof(video.textRam))) {
             // Text RAM (8b/16b)
-            uint16_t msk = (mask >> 16) | (mask & 0xFFFF);
-            uint16_t v   = (val >> 16) | (val & 0xFFFF);
+            auto p = &reinterpret_cast<uint32_t *>(video.textRam)[(addr & (sizeof(video.textRam) - 1)) / 4];
+            *p     = (*p & ~mask) | (val & mask);
 
-            auto p = &video.textRam[(addr & (sizeof(video.textRam) - 1)) / 2];
-            *p     = (*p & ~msk) | (v & msk);
         } else if (addr >= BASE_VRAM && addr < (BASE_VRAM + sizeof(video.videoRam))) {
             // Video RAM (8/16/32b)
             auto p = &reinterpret_cast<uint32_t *>(video.videoRam)[(addr & (sizeof(video.videoRam) - 1)) / 4];

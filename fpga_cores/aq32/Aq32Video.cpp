@@ -27,34 +27,15 @@ void Aq32Video::drawLine(int line) {
     {
         bool mode80 = (videoCtrl & VCTRL_TEXT_MODE80) != 0;
 
-        unsigned idx = 1024 - 32;
         for (int i = 0; i < activeWidth; i++) {
             // Draw text character
-            unsigned addr = 0;
-
-            if (vActive && idx < 640) {
-                int row = (line - 16) / 8;
-                if (mode80) {
-                    int column = (i - 32) / 8;
-                    addr       = row * 80 + column;
-                } else {
-                    int column = ((i / 2) - 16) / 8;
-                    addr       = row * 40 + column;
-                }
-            } else {
-                addr = 0x7FF;
-            }
-            if (!mode80) {
-                addr = (addr & 0x3FF);
-            }
-
-            uint16_t val    = textRam[addr];
+            uint16_t val    = mode80
+                                  ? textRam[(line / 8) * 80 + (i / 8)]
+                                  : textRam[(line / 8) * 40 + ((i / 2) / 8)];
             uint8_t  ch     = val & 0xFF;
             uint8_t  color  = val >> 8;
             uint8_t  charBm = charRam[ch * 8 + (line & 7)];
-
-            lineText[idx] = (charBm & (1 << (7 - ((mode80 ? i : (i / 2)) & 7)))) ? (color >> 4) : (color & 0xF);
-            idx           = (idx + 1) & 1023;
+            lineText[i]     = (charBm & (1 << (7 - ((mode80 ? i : (i / 2)) & 7)))) ? (color >> 4) : (color & 0xF);
         }
     }
 
@@ -206,32 +187,30 @@ void Aq32Video::drawLine(int line) {
 
     // Compose layers
     {
-        uint16_t *pd  = &screen[line * activeWidth];
-        unsigned  idx = 1024 - 32;
+        uint16_t *pd = &screen[line * activeWidth];
 
         for (int i = 0; i < activeWidth; i++) {
-            bool active       = idx < 640 && vActive;
+            bool active       = vActive;
             bool textPriority = (videoCtrl & VCTRL_TEXT_PRIO) != 0;
             bool textEnable   = (videoCtrl & VCTRL_TEXT_EN) != 0;
 
             uint8_t colIdx = 0;
             if (!active) {
                 if (textEnable)
-                    colIdx = lineText[idx];
+                    colIdx = lineText[i];
             } else {
                 if (textEnable)
-                    colIdx = lineText[idx];
+                    colIdx = lineText[i];
 
                 if (textEnable && !textPriority)
-                    colIdx = lineText[idx];
-                if (!textEnable || textPriority || (lineGfx[idx / 2] & 0xF) != 0)
-                    colIdx = lineGfx[idx / 2];
-                if (textEnable && textPriority && (lineText[idx] & 0xF) != 0)
-                    colIdx = lineText[idx];
+                    colIdx = lineText[i];
+                if (!textEnable || textPriority || (lineGfx[i / 2] & 0xF) != 0)
+                    colIdx = lineGfx[i / 2];
+                if (textEnable && textPriority && (lineText[i] & 0xF) != 0)
+                    colIdx = lineText[i];
             }
 
             pd[i] = videoPalette[colIdx & 0x3F];
-            idx   = (idx + 1) & 1023;
         }
     }
 }
