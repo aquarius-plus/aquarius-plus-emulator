@@ -40,27 +40,44 @@ void Aq32Video::drawLine(int line) {
     // Render bitmap/tile layer
     uint8_t lineGfx[512];
     {
-        int bmline = line;
         if ((videoCtrl & VCTRL_GFX_EN) == 0) {
             for (int i = 0; i < 320; i++) {
                 lineGfx[i] = 0;
             }
         } else {
-            if (!(videoCtrl & VCTRL_GFX_TILEMODE)) {
+            unsigned tileLine = (line + videoScrY) & 255;
+            unsigned idx      = (-(videoScrX & 7)) & 511;
+            unsigned row      = (tileLine >> 3) & 31;
+            unsigned col      = videoScrX >> 3;
+
+            if ((videoCtrl & VCTRL_GFX_TILEMODE) == 0) {
                 // Bitmap mode 4bpp
-                for (int i = 0; i < 160; i++) {
-                    uint8_t col        = videoRam[bmline * 160 + i];
-                    lineGfx[i * 2 + 0] = (1 << 4) | (col >> 4);
-                    lineGfx[i * 2 + 1] = (1 << 4) | (col & 0xF);
+                int bmline = (line + videoScrY) % 200;
+                for (int i = 0; i < 41; i++) {
+                    unsigned patOffs = (bmline * 40 + col) * 4;
+
+                    // Next column
+                    col = (col + 1) % 40;
+
+                    for (int n = 0; n < 4; n++) {
+                        uint8_t data = videoRam[patOffs + n];
+                        {
+                            uint8_t val = data >> 4;
+                            val |= 0x10;
+                            lineGfx[idx++] = val;
+                            idx &= 511;
+                        }
+                        {
+                            uint8_t val = data & 0xF;
+                            val |= 0x10;
+                            lineGfx[idx++] = val;
+                            idx &= 511;
+                        }
+                    }
                 }
 
             } else {
                 // Tile mode
-                unsigned idx      = (-(videoScrX & 7)) & 511;
-                unsigned tileLine = (bmline + videoScrY) & 255;
-                unsigned row      = (tileLine >> 3) & 31;
-                unsigned col      = videoScrX >> 3;
-
                 for (int i = 0; i < 41; i++) {
                     // Tilemap is 64x32 (2 bytes per entry)
                     unsigned tilemapOffset = 0x7000 | (row << 7) | (col << 1);
@@ -111,7 +128,7 @@ void Aq32Video::drawLine(int line) {
         }
 
         // Render sprites
-        if ((videoCtrl & (1 << 3)) != 0) {
+        if ((videoCtrl & VCTRL_SPR_EN) != 0) {
             for (int i = 0; i < 64; i++) {
                 uint32_t pos  = spritePos[i];
                 uint16_t attr = spriteAttr[i];
@@ -120,7 +137,7 @@ void Aq32Video::drawLine(int line) {
 
                 // Check if sprite is visible on this line
                 bool h16     = (attr & (1 << 10)) != 0;
-                int  sprLine = (bmline - posY) & 0xFF;
+                int  sprLine = (line - posY) & 0xFF;
                 if (sprLine >= (h16 ? 16 : 8))
                     continue;
 
@@ -202,15 +219,13 @@ void Aq32Video::drawLine(int line) {
 }
 
 void Aq32Video::dbgDrawIoRegs() {
-    static const char *gfxMode[] = {"OFF", "TILEMAP", "BITMAP", "BITMAP_4BPP"};
-
     ImGui::Text("VCTRL   : 0x%02X", videoCtrl);
-    ImGui::Text("  TEXT_ENABLE       : %u", videoCtrl & 1);
-    ImGui::Text("  GFXMODE           : %u (%s)", (videoCtrl >> 1) & 3, gfxMode[(videoCtrl >> 1) & 3]);
-    ImGui::Text("  SPRITES_ENABLE    : %u", (videoCtrl >> 3) & 1);
-    ImGui::Text("  TEXT_PRIORITY     : %u", (videoCtrl >> 4) & 1);
-    ImGui::Text("  80_COLUMNS        : %u", (videoCtrl >> 6) & 1);
-    ImGui::Text("  TRAM_PAGE         : %u", (videoCtrl >> 7) & 1);
+    ImGui::Text("  TEXT_ENABLE  : %u", (videoCtrl & VCTRL_TEXT_EN) ? 1 : 0);
+    ImGui::Text("  TEXT_MODE80  : %u", (videoCtrl & VCTRL_TEXT_MODE80) ? 1 : 0);
+    ImGui::Text("  TEXT_PRIO    : %u", (videoCtrl & VCTRL_TEXT_PRIO) ? 1 : 0);
+    ImGui::Text("  GFX_EN       : %u", (videoCtrl & VCTRL_GFX_EN) ? 1 : 0);
+    ImGui::Text("  GFX_TILEMODE : %u", (videoCtrl & VCTRL_GFX_TILEMODE) ? 1 : 0);
+    ImGui::Text("  SPR_EN       : %u", (videoCtrl & VCTRL_SPR_EN) ? 1 : 0);
     ImGui::Text("VSCRX   : %u", videoScrX);
     ImGui::Text("VSCRY   : %u", videoScrY);
     ImGui::Text("VLINE   : %u", videoLine);
