@@ -20,8 +20,6 @@ void Aq32Video::drawLine(int line) {
     if (line < 0 || line >= activeHeight)
         return;
 
-    bool vActive = line >= 16 && line < 216;
-
     // Render text
     uint8_t lineText[1024];
     {
@@ -41,8 +39,8 @@ void Aq32Video::drawLine(int line) {
 
     // Render bitmap/tile layer
     uint8_t lineGfx[512];
-    if (vActive) {
-        int bmline = line - 16;
+    {
+        int bmline = line;
         if ((videoCtrl & VCTRL_GFX_EN) == 0) {
             for (int i = 0; i < 320; i++) {
                 lineGfx[i] = 0;
@@ -65,15 +63,15 @@ void Aq32Video::drawLine(int line) {
 
                 for (int i = 0; i < 41; i++) {
                     // Tilemap is 64x32 (2 bytes per entry)
+                    unsigned tilemapOffset = 0x7000 | (row << 7) | (col << 1);
 
                     // Fetch tilemap entry
-                    uint8_t entryL = videoRam[(row << 7) | (col << 1)];
-                    uint8_t entryH = videoRam[(row << 7) | (col << 1) | 1];
+                    uint16_t entry = (videoRam[tilemapOffset | 1] << 8) | videoRam[tilemapOffset];
 
-                    unsigned tileIdx = ((entryH & 1) << 8) | entryL;
-                    bool     hFlip   = (entryH & (1 << 1)) != 0;
-                    bool     vFlip   = (entryH & (1 << 2)) != 0;
-                    uint8_t  attr    = entryH & 0x70;
+                    unsigned tileIdx = entry & 1023;
+                    bool     hFlip   = (entry & (1 << 11)) != 0;
+                    bool     vFlip   = (entry & (1 << 12)) != 0;
+                    uint8_t  attr    = (entry >> 9) & 0x70;
 
                     unsigned patOffs = (tileIdx << 5) | ((tileLine & 7) << 2);
                     if (vFlip)
@@ -115,27 +113,24 @@ void Aq32Video::drawLine(int line) {
         // Render sprites
         if ((videoCtrl & (1 << 3)) != 0) {
             for (int i = 0; i < 64; i++) {
-                const auto &sprite = sprites[i];
-
-                // Check if sprite enabled
-                bool enabled = (sprite.attr & (1 << 15)) != 0;
-                if (!enabled)
-                    continue;
+                uint32_t pos  = spritePos[i];
+                uint16_t attr = spriteAttr[i];
+                unsigned posX = pos & 511;
+                unsigned posY = (pos >> 16) & 255;
 
                 // Check if sprite is visible on this line
-                bool h16     = (sprite.attr & (1 << 11)) != 0;
-                int  sprLine = (bmline - sprite.y) & 0xFF;
+                bool h16     = (attr & (1 << 10)) != 0;
+                int  sprLine = (bmline - posY) & 0xFF;
                 if (sprLine >= (h16 ? 16 : 8))
                     continue;
 
-                int      sprX     = sprite.x;
-                unsigned tileIdx  = sprite.attr & 0x1FF;
-                bool     hFlip    = (sprite.attr & (1 << 9)) != 0;
-                bool     vFlip    = (sprite.attr & (1 << 10)) != 0;
-                uint8_t  palette  = (sprite.attr >> 8) & 0x30;
-                bool     priority = (sprite.attr & (1 << 14)) != 0;
+                unsigned tileIdx  = attr & 1023;
+                bool     hFlip    = (attr & (1 << 11)) != 0;
+                bool     vFlip    = (attr & (1 << 12)) != 0;
+                uint8_t  palette  = (attr >> 9) & 0x30;
+                bool     priority = (attr & (1 << 15)) != 0;
 
-                unsigned idx = sprX;
+                unsigned idx = posX;
 
                 if (vFlip)
                     sprLine ^= (h16 ? 15 : 7);
@@ -190,25 +185,16 @@ void Aq32Video::drawLine(int line) {
         uint16_t *pd = &screen[line * activeWidth];
 
         for (int i = 0; i < activeWidth; i++) {
-            bool active       = vActive;
             bool textPriority = (videoCtrl & VCTRL_TEXT_PRIO) != 0;
             bool textEnable   = (videoCtrl & VCTRL_TEXT_EN) != 0;
 
             uint8_t colIdx = 0;
-            if (!active) {
-                if (textEnable)
-                    colIdx = lineText[i];
-            } else {
-                if (textEnable)
-                    colIdx = lineText[i];
-
-                if (textEnable && !textPriority)
-                    colIdx = lineText[i];
-                if (!textEnable || textPriority || (lineGfx[i / 2] & 0xF) != 0)
-                    colIdx = lineGfx[i / 2];
-                if (textEnable && textPriority && (lineText[i] & 0xF) != 0)
-                    colIdx = lineText[i];
-            }
+            if (textEnable && !textPriority)
+                colIdx = lineText[i];
+            if (!textEnable || textPriority || (lineGfx[i / 2] & 0xF) != 0)
+                colIdx = lineGfx[i / 2];
+            if (textEnable && textPriority && (lineText[i] & 0xF) != 0)
+                colIdx = lineText[i];
 
             pd[i] = videoPalette[colIdx & 0x3F];
         }
@@ -237,12 +223,11 @@ void Aq32Video::dbgDrawSpriteRegs() {
         ImGui::TableSetupColumn("X", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableSetupColumn("Y", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableSetupColumn("Tile", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn("En", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableSetupColumn("Pri", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableSetupColumn("Pal", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn("H16", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableSetupColumn("VF", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn("HF");
+        ImGui::TableSetupColumn("HF", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("H16");
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableHeadersRow();
 
@@ -250,29 +235,25 @@ void Aq32Video::dbgDrawSpriteRegs() {
         clipper.Begin(64);
         while (clipper.Step()) {
             for (int row_n = clipper.DisplayStart; row_n < clipper.DisplayEnd; row_n++) {
-                const auto &sprite = sprites[row_n];
-
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
                 ImGui::Text("%2d", row_n);
                 ImGui::TableNextColumn();
-                ImGui::Text("%3d", sprite.x);
+                ImGui::Text("%3d", spritePos[row_n] & 511);
                 ImGui::TableNextColumn();
-                ImGui::Text("%3d", sprite.y);
+                ImGui::Text("%3d", (spritePos[row_n] >> 16) & 255);
                 ImGui::TableNextColumn();
-                ImGui::Text("%3d", sprite.attr & 0x1FF);
+                ImGui::Text("%3d", spriteAttr[row_n] & 1023);
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted((sprite.attr & 0x8000) ? "X" : "");
+                ImGui::TextUnformatted((spriteAttr[row_n] & (1 << 15)) ? "X" : "");
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted((sprite.attr & 0x4000) ? "X" : "");
+                ImGui::Text("%d", (spriteAttr[row_n] >> 13) & 3);
                 ImGui::TableNextColumn();
-                ImGui::Text("%d", (sprite.attr >> 12) & 3);
+                ImGui::TextUnformatted((spriteAttr[row_n] & (1 << 12)) ? "X" : "");
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted((sprite.attr & 0x0800) ? "X" : "");
+                ImGui::TextUnformatted((spriteAttr[row_n] & (1 << 11)) ? "X" : "");
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted((sprite.attr & 0x0400) ? "X" : "");
-                ImGui::TableNextColumn();
-                ImGui::TextUnformatted((sprite.attr & 0x0200) ? "X" : "");
+                ImGui::TextUnformatted((spriteAttr[row_n] & (1 << 10)) ? "X" : "");
             }
         }
         ImGui::EndTable();

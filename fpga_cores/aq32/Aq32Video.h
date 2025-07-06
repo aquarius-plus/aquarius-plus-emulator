@@ -34,12 +34,8 @@ public:
     alignas(4) uint8_t charRam[2048];       // Character RAM
     uint16_t videoPalette[64] = {0};        // Video palette
 
-    struct Sprite {
-        uint16_t x    = 0;
-        uint8_t  y    = 0;
-        uint16_t attr = 0;
-    };
-    Sprite sprites[64];
+    uint32_t spritePos[64];
+    uint16_t spriteAttr[64];
 
     uint8_t  videoCtrl    = 0; // Video control register
     uint16_t videoScrX    = 0; // Tile map horizontal scroll register

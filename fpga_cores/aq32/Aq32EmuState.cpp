@@ -112,7 +112,6 @@ public:
     std::recursive_mutex mutex;
     uint32_t             mainRam[512 * 1024 / 4];
     uint32_t             bootRom[0x800 / 4];
-    int                  curLine               = -1;
     int                  curLineStepsRemaining = 0;
     uint64_t             mtimecmp              = 0;
     uint64_t             mtimeDiff             = 0;
@@ -435,11 +434,11 @@ public:
 
         } else if (addr >= BASE_SPRATTR && addr < (BASE_SPRATTR + 64 * 8)) {
             // Sprite attributes (32b)
-            int sprIdx = (addr >> 3) & 63;
-            if (addr & 4) {
-                return video.sprites[sprIdx].attr;
+            int idx = (addr / 4) & 127;
+            if (idx < 64) {
+                return video.spriteAttr[idx];
             } else {
-                return (video.sprites[sprIdx].y << 16) | (video.sprites[sprIdx].x & 0x1FF);
+                return video.spritePos[idx & 63];
             }
         } else if (addr >= BASE_PALETTE && addr < (BASE_PALETTE + sizeof(video.videoPalette))) {
             // Palette (16b)
@@ -524,13 +523,11 @@ public:
             else if (idx >= 192 && idx <= 255)
                 fmsynth.op_attr1[idx - 192] = val & 7;
         } else if (addr >= BASE_SPRATTR && addr < (BASE_SPRATTR + 64 * 8)) {
-            // Sprite attributes (32b)
-            int sprIdx = (addr >> 3) & 63;
-            if (addr & 4) {
-                video.sprites[sprIdx].attr = val & 0xFFFF;
+            int idx = (addr / 4) & 127;
+            if (idx < 64) {
+                video.spriteAttr[idx] = val & 0xFFFF;
             } else {
-                video.sprites[sprIdx].x = val & 0x1FF;
-                video.sprites[sprIdx].y = (val >> 16) & 0xFF;
+                video.spritePos[idx & 63] = val & 0x00FF01FF;
             }
         } else if (addr >= BASE_PALETTE && addr < (BASE_PALETTE + sizeof(video.videoPalette))) {
             // Palette (16b)
@@ -582,7 +579,7 @@ public:
             return true;
 
         if (curLineStepsRemaining <= 0) {
-            curLine++;
+            video.videoLine++;
             curLineStepsRemaining = 10000000 / 60 / 262;
 
             if (video.isOnStartOfVBlank())
@@ -590,12 +587,12 @@ public:
             if (video.isOnVideoIrqLine())
                 cpu.pendInterrupt(1 << 17);
 
-            if (curLine == 262) {
-                curLine      = 0;
-                end_of_frame = true;
+            if (video.videoLine == 262) {
+                video.videoLine = 0;
+                end_of_frame    = true;
             }
 
-            video.drawLine(curLine);
+            video.drawLine(video.videoLine);
             keyboardTypeIn();
 
             if (pcm.hasIrq())
