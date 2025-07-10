@@ -32,12 +32,14 @@
 #define BASE_BOOTROM      0x00000
 #define REG_ESPCTRL       0x02000
 #define REG_ESPDATA       0x02004
-#define REG_VCTRL         0x02008
-#define REG_VSCRX         0x0200C
-#define REG_VSCRY         0x02010
-#define REG_VLINE         0x02014
-#define REG_VIRQLINE      0x02018
-#define REG_KEYBUF        0x0201C
+#define REG_KEYBUF        0x02010
+#define REG_VCTRL         0x02040
+#define REG_VLINE         0x02048
+#define REG_VIRQLINE      0x0204C
+#define REG_VSCRX1        0x02050
+#define REG_VSCRY1        0x02054
+#define REG_VSCRX2        0x02058
+#define REG_VSCRY2        0x0205C
 #define REG_MTIME         0x02080
 #define REG_MTIMEH        0x02084
 #define REG_MTIMECMP      0x02088
@@ -48,6 +50,7 @@
 #define REG_PCM_FIFO_DATA 0x0240C
 #define BASE_FMSYNTH      0x02800
 #define BASE_SPRATTR      0x03000
+#define BASE_SPRPOS       0x03400
 #define BASE_PALETTE      0x04000
 #define BASE_CHRAM        0x05000
 #define BASE_TEXTRAM      0x06000
@@ -381,16 +384,6 @@ public:
                 return UartProtocol::instance()->readData();
             else
                 return 0;
-        } else if (addr == REG_VCTRL) {
-            return video.videoCtrl;
-        } else if (addr == REG_VSCRX) {
-            return video.videoScrX;
-        } else if (addr == REG_VSCRY) {
-            return video.videoScrY;
-        } else if (addr == REG_VLINE) {
-            return video.videoLine;
-        } else if (addr == REG_VIRQLINE) {
-            return video.videoIrqLine;
         } else if (addr == REG_KEYBUF) {
             uint32_t result = 0;
             if (kbBuf.empty()) {
@@ -401,6 +394,20 @@ public:
                     kbBuf.pop_front();
             }
             return result;
+        } else if (addr == REG_VCTRL) {
+            return video.videoCtrl;
+        } else if (addr == REG_VLINE) {
+            return video.videoLine;
+        } else if (addr == REG_VIRQLINE) {
+            return video.videoIrqLine;
+        } else if (addr == REG_VSCRX1) {
+            return video.videoScrX1;
+        } else if (addr == REG_VSCRY1) {
+            return video.videoScrY1;
+        } else if (addr == REG_VSCRX2) {
+            return video.videoScrX2;
+        } else if (addr == REG_VSCRY2) {
+            return video.videoScrY2;
         } else if (addr == REG_MTIME) {
             uint64_t mtime = getMtime();
             return (uint32_t)(mtime & 0xFFFFFFFFUL);
@@ -431,15 +438,12 @@ public:
                 return fmsynth.op_attr0[idx - 128];
             else if (idx >= 192 && idx <= 255)
                 return fmsynth.op_attr1[idx - 192];
-
-        } else if (addr >= BASE_SPRATTR && addr < (BASE_SPRATTR + 64 * 8)) {
+        } else if (addr >= BASE_SPRATTR && addr < (BASE_SPRATTR + 256 * 4)) {
             // Sprite attributes (32b)
-            int idx = (addr / 4) & 127;
-            if (idx < 64) {
-                return video.spriteAttr[idx];
-            } else {
-                return video.spritePos[idx & 63];
-            }
+            return video.spriteAttr[(addr / 4) & 255];
+        } else if (addr >= BASE_SPRPOS && addr < (BASE_SPRPOS + 256 * 4)) {
+            // Sprite positions (32b)
+            return video.spritePos[(addr / 4) & 255];
         } else if (addr >= BASE_PALETTE && addr < (BASE_PALETTE + sizeof(video.videoPalette))) {
             // Palette (16b)
             uint16_t val = video.videoPalette[(addr & (sizeof(video.videoPalette) - 1)) / 2];
@@ -478,17 +482,21 @@ public:
             } else {
                 UartProtocol::instance()->writeData(val & 0xFF);
             }
+        } else if (addr == REG_KEYBUF) {
+            kbBuf.clear();
         } else if (addr == REG_VCTRL) {
             video.videoCtrl = val & 0xFF;
-        } else if (addr == REG_VSCRX) {
-            video.videoScrX = val & 0x1FF;
-        } else if (addr == REG_VSCRY) {
-            video.videoScrY = val & 0xFF;
         } else if (addr == REG_VLINE) {
         } else if (addr == REG_VIRQLINE) {
             video.videoIrqLine = val & 0xFF;
-        } else if (addr == REG_KEYBUF) {
-            kbBuf.clear();
+        } else if (addr == REG_VSCRX1) {
+            video.videoScrX1 = val & 0x1FF;
+        } else if (addr == REG_VSCRY1) {
+            video.videoScrY1 = val & 0xFF;
+        } else if (addr == REG_VSCRX2) {
+            video.videoScrX2 = val & 0x1FF;
+        } else if (addr == REG_VSCRY2) {
+            video.videoScrY2 = val & 0xFF;
         } else if (addr == REG_MTIME) {
             uint64_t mtime = getMtime();
             setMtime((mtime & ~(uint64_t)0xFFFFFFFFU) | val);
@@ -522,13 +530,10 @@ public:
                 fmsynth.op_attr0[idx - 128] = val;
             else if (idx >= 192 && idx <= 255)
                 fmsynth.op_attr1[idx - 192] = val & 7;
-        } else if (addr >= BASE_SPRATTR && addr < (BASE_SPRATTR + 64 * 8)) {
-            int idx = (addr / 4) & 127;
-            if (idx < 64) {
-                video.spriteAttr[idx] = val & 0xFFFF;
-            } else {
-                video.spritePos[idx & 63] = val & 0x00FF01FF;
-            }
+        } else if (addr >= BASE_SPRATTR && addr < (BASE_SPRATTR + 256 * 4)) {
+            video.spriteAttr[(addr / 4) & 255] = val & 0x3FFFF;
+        } else if (addr >= BASE_SPRPOS && addr < (BASE_SPRPOS + 256 * 4)) {
+            video.spritePos[(addr / 4) & 255] = val & 0x00FF01FF;
         } else if (addr >= BASE_PALETTE && addr < (BASE_PALETTE + sizeof(video.videoPalette))) {
             // Palette (16b)
             video.videoPalette[(addr & (sizeof(video.videoPalette) - 1)) / 2] = ((val >> 16) | (val & 0xFFFF)) & 0xFFF;

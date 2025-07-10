@@ -10,10 +10,12 @@ Aq32Video::Aq32Video() {
 
 void Aq32Video::reset() {
     videoCtrl    = 0;
-    videoScrX    = 0;
-    videoScrY    = 0;
     videoLine    = 0;
     videoIrqLine = 0;
+    videoScrX1   = 0;
+    videoScrY1   = 0;
+    videoScrX2   = 0;
+    videoScrY2   = 0;
 }
 
 void Aq32Video::drawLine(int line) {
@@ -39,20 +41,19 @@ void Aq32Video::drawLine(int line) {
 
     // Render bitmap/tile layer
     uint8_t lineGfx[512];
+    uint8_t lineZ[512];
     {
         if ((videoCtrl & VCTRL_GFX_EN) == 0) {
             for (int i = 0; i < 320; i++) {
                 lineGfx[i] = 0;
             }
         } else {
-            unsigned tileLine = (line + videoScrY) & 255;
-            unsigned idx      = (-(videoScrX & 7)) & 511;
-            unsigned row      = (tileLine >> 3) & 31;
-            unsigned col      = videoScrX >> 3;
-
             if ((videoCtrl & VCTRL_GFX_TILEMODE) == 0) {
+                unsigned idx = (-(videoScrX1 & 7)) & 511;
+                unsigned col = videoScrX1 >> 3;
+
                 // Bitmap mode 4bpp
-                int bmline = (line + videoScrY) % 200;
+                int bmline = (line + videoScrY1) % 200;
                 for (int i = 0; i < 41; i++) {
                     unsigned patOffs = (bmline * 40 + col) * 4;
 
@@ -77,50 +78,71 @@ void Aq32Video::drawLine(int line) {
                 }
 
             } else {
-                // Tile mode
-                for (int i = 0; i < 41; i++) {
-                    // Tilemap is 64x32 (2 bytes per entry)
-                    unsigned tilemapOffset = 0x7000 | (row << 7) | (col << 1);
+                for (int layer = 0; layer < 2; layer++) {
+                    if (layer == 1 && (videoCtrl & VCTRL_LAYER2_EN) == 0)
+                        break;
 
-                    // Fetch tilemap entry
-                    uint16_t entry = (videoRam[tilemapOffset | 1] << 8) | videoRam[tilemapOffset];
+                    unsigned scrX     = layer == 0 ? videoScrX1 : videoScrX2;
+                    unsigned scrY     = layer == 0 ? videoScrY1 : videoScrY2;
+                    unsigned tileLine = (line + scrY) & 255;
+                    unsigned idx      = (-(scrX & 7)) & 511;
+                    unsigned row      = (tileLine >> 3) & 31;
+                    unsigned col      = scrX >> 3;
 
-                    unsigned tileIdx = entry & 1023;
-                    bool     hFlip   = (entry & (1 << 11)) != 0;
-                    bool     vFlip   = (entry & (1 << 12)) != 0;
-                    uint8_t  attr    = (entry >> 9) & 0x70;
+                    // Tile mode
+                    for (int i = 0; i < 41; i++) {
+                        // Tilemap is 64x32 (2 bytes per entry)
+                        unsigned tilemapOffset = (layer == 0 ? 0x7000 : 0x6000) | (row << 7) | (col << 1);
 
-                    unsigned patOffs = (tileIdx << 5) | ((tileLine & 7) << 2);
-                    if (vFlip)
-                        patOffs ^= (7 << 2);
+                        // Fetch tilemap entry
+                        uint16_t entry = (videoRam[tilemapOffset | 1] << 8) | videoRam[tilemapOffset];
 
-                    // Next column
-                    col = (col + 1) & 63;
+                        unsigned tileIdx = entry & 1023;
+                        bool     prio    = (entry & (1 << 10)) != 0;
+                        bool     hFlip   = (entry & (1 << 11)) != 0;
+                        bool     vFlip   = (entry & (1 << 12)) != 0;
+                        uint8_t  palette = (entry >> 9) & 0x70;
 
-                    for (int n = 0; n < 4; n++) {
-                        int m = n;
-                        if (hFlip)
-                            m ^= 3;
+                        unsigned patOffs = (tileIdx << 5) | ((tileLine & 7) << 2);
+                        if (vFlip)
+                            patOffs ^= (7 << 2);
 
-                        uint8_t data = videoRam[patOffs + m];
+                        // Next column
+                        col = (col + 1) & 63;
 
-                        if (!hFlip) {
-                            uint8_t val = data >> 4;
-                            val |= (attr & ((val == 0) ? 0x30 : 0x70));
-                            lineGfx[idx++] = val;
-                            idx &= 511;
-                        }
-                        {
-                            uint8_t val = data & 0xF;
-                            val |= (attr & ((val == 0) ? 0x30 : 0x70));
-                            lineGfx[idx++] = val;
-                            idx &= 511;
-                        }
-                        if (hFlip) {
-                            uint8_t val = data >> 4;
-                            val |= (attr & ((val == 0) ? 0x30 : 0x70));
-                            lineGfx[idx++] = val;
-                            idx &= 511;
+                        unsigned depth = ((layer + 2) << 1) | (prio ? 1 : 0);
+
+                        for (int n = 0; n < 4; n++) {
+                            int m = n;
+                            if (hFlip)
+                                m ^= 3;
+
+                            uint8_t data = videoRam[patOffs + m];
+
+                            if (!hFlip) {
+                                unsigned colIdx = data >> 4;
+                                if (layer == 0 || (colIdx != 0 && depth >= lineZ[idx])) {
+                                    lineZ[idx]   = (colIdx == 0) ? 0 : depth;
+                                    lineGfx[idx] = palette | colIdx;
+                                }
+                                idx = (idx + 1) & 511;
+                            }
+                            {
+                                unsigned colIdx = data & 0xF;
+                                if (layer == 0 || (colIdx != 0 && depth >= lineZ[idx])) {
+                                    lineZ[idx]   = (colIdx == 0) ? 0 : depth;
+                                    lineGfx[idx] = palette | colIdx;
+                                }
+                                idx = (idx + 1) & 511;
+                            }
+                            if (hFlip) {
+                                unsigned colIdx = data >> 4;
+                                if (layer == 0 || (colIdx != 0 && depth >= lineZ[idx])) {
+                                    lineZ[idx]   = (colIdx == 0) ? 0 : depth;
+                                    lineGfx[idx] = palette | colIdx;
+                                }
+                                idx = (idx + 1) & 511;
+                            }
                         }
                     }
                 }
@@ -129,9 +151,9 @@ void Aq32Video::drawLine(int line) {
 
         // Render sprites
         if ((videoCtrl & VCTRL_SPR_EN) != 0) {
-            for (int i = 0; i < 64; i++) {
+            for (int i = 0; i < 256; i++) {
                 uint32_t pos  = spritePos[i];
-                uint16_t attr = spriteAttr[i];
+                uint32_t attr = spriteAttr[i];
                 unsigned posX = pos & 511;
                 unsigned posY = (pos >> 16) & 255;
 
@@ -141,11 +163,11 @@ void Aq32Video::drawLine(int line) {
                 if (sprLine >= (h16 ? 16 : 8))
                     continue;
 
-                unsigned tileIdx  = attr & 1023;
-                bool     hFlip    = (attr & (1 << 11)) != 0;
-                bool     vFlip    = (attr & (1 << 12)) != 0;
-                uint8_t  palette  = (attr >> 9) & 0x30;
-                bool     priority = (attr & (1 << 15)) != 0;
+                unsigned tileIdx = attr & 1023;
+                bool     hFlip   = (attr & (1 << 11)) != 0;
+                bool     vFlip   = (attr & (1 << 12)) != 0;
+                uint8_t  palette = (attr >> 9) & 0x70;
+                uint8_t  depth   = (attr >> 15) & 6;
 
                 unsigned idx = posX;
 
@@ -164,33 +186,28 @@ void Aq32Video::drawLine(int line) {
                     uint8_t data = videoRam[patOffs + m];
 
                     if (!hFlip) {
-                        if (priority || (lineGfx[idx] & (1 << 6)) == 0) {
-                            unsigned colIdx = (data >> 4);
-
-                            if (colIdx != 0)
-                                lineGfx[idx] = colIdx | palette;
+                        unsigned colIdx = (data >> 4);
+                        if (colIdx != 0 && depth >= lineZ[idx]) {
+                            lineZ[idx]   = depth;
+                            lineGfx[idx] = palette | colIdx;
                         }
-                        idx++;
-                        idx &= 511;
+                        idx = (idx + 1) & 511;
                     }
-                    if (priority || (lineGfx[idx] & (1 << 6)) == 0) {
+                    {
                         unsigned colIdx = (data & 0xF);
-
-                        if (colIdx != 0)
-                            lineGfx[idx] = colIdx | palette;
-                    }
-                    idx++;
-                    idx &= 511;
-
-                    if (hFlip) {
-                        if (priority || (lineGfx[idx] & (1 << 6)) == 0) {
-                            unsigned colIdx = (data >> 4);
-
-                            if (colIdx != 0)
-                                lineGfx[idx] = colIdx | palette;
+                        if (colIdx != 0 && depth >= lineZ[idx]) {
+                            lineZ[idx]   = depth;
+                            lineGfx[idx] = palette | colIdx;
                         }
-                        idx++;
-                        idx &= 511;
+                        idx = (idx + 1) & 511;
+                    }
+                    if (hFlip) {
+                        unsigned colIdx = (data >> 4);
+                        if (colIdx != 0 && depth >= lineZ[idx]) {
+                            lineZ[idx]   = depth;
+                            lineGfx[idx] = palette | colIdx;
+                        }
+                        idx = (idx + 1) & 511;
                     }
                 }
             }
@@ -226,10 +243,13 @@ void Aq32Video::dbgDrawIoRegs() {
     ImGui::Text("  GFX_EN       : %u", (videoCtrl & VCTRL_GFX_EN) ? 1 : 0);
     ImGui::Text("  GFX_TILEMODE : %u", (videoCtrl & VCTRL_GFX_TILEMODE) ? 1 : 0);
     ImGui::Text("  SPR_EN       : %u", (videoCtrl & VCTRL_SPR_EN) ? 1 : 0);
-    ImGui::Text("VSCRX   : %u", videoScrX);
-    ImGui::Text("VSCRY   : %u", videoScrY);
+    ImGui::Text("  LAYER2_EN    : %u", (videoCtrl & VCTRL_LAYER2_EN) ? 1 : 0);
     ImGui::Text("VLINE   : %u", videoLine);
     ImGui::Text("VIRQLINE: %u", videoIrqLine);
+    ImGui::Text("VSCRX1  : %u", videoScrX1);
+    ImGui::Text("VSCRY1  : %u", videoScrY1);
+    ImGui::Text("VSCRX2  : %u", videoScrX2);
+    ImGui::Text("VSCRY2  : %u", videoScrY2);
 }
 
 void Aq32Video::dbgDrawSpriteRegs() {
@@ -238,7 +258,7 @@ void Aq32Video::dbgDrawSpriteRegs() {
         ImGui::TableSetupColumn("X", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableSetupColumn("Y", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableSetupColumn("Tile", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn("Pri", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("Depth", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableSetupColumn("Pal", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableSetupColumn("VF", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableSetupColumn("HF", ImGuiTableColumnFlags_WidthFixed);
@@ -247,7 +267,7 @@ void Aq32Video::dbgDrawSpriteRegs() {
         ImGui::TableHeadersRow();
 
         ImGuiListClipper clipper;
-        clipper.Begin(64);
+        clipper.Begin(256);
         while (clipper.Step()) {
             for (int row_n = clipper.DisplayStart; row_n < clipper.DisplayEnd; row_n++) {
                 ImGui::TableNextRow();
@@ -260,9 +280,9 @@ void Aq32Video::dbgDrawSpriteRegs() {
                 ImGui::TableNextColumn();
                 ImGui::Text("%3d", spriteAttr[row_n] & 1023);
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted((spriteAttr[row_n] & (1 << 15)) ? "X" : "");
+                ImGui::Text("%d", (spriteAttr[row_n] >> 16) & 3);
                 ImGui::TableNextColumn();
-                ImGui::Text("%d", (spriteAttr[row_n] >> 13) & 3);
+                ImGui::Text("%d", (spriteAttr[row_n] >> 13) & 7);
                 ImGui::TableNextColumn();
                 ImGui::TextUnformatted((spriteAttr[row_n] & (1 << 12)) ? "X" : "");
                 ImGui::TableNextColumn();
@@ -289,7 +309,7 @@ void Aq32Video::dbgDrawPaletteRegs() {
         ImGui::TableHeadersRow();
 
         ImGuiListClipper clipper;
-        clipper.Begin(64);
+        clipper.Begin(128);
         while (clipper.Step()) {
             for (int row_n = clipper.DisplayStart; row_n < clipper.DisplayEnd; row_n++) {
                 int r = (videoPalette[row_n] >> 8) & 0xF;
