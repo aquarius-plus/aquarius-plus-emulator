@@ -18,6 +18,25 @@ void Aq32Video::reset() {
     videoScrY2   = 0;
 }
 
+void Aq32Video::renderer(unsigned &idx, uint32_t data, bool hFlip, unsigned palette, unsigned zDepth, bool zDepthInit) {
+    for (int i = 0; i < 8; i++, idx++) {
+        idx &= 511;
+
+        unsigned colIdx =
+            hFlip
+                ? ((data >> (i * 4)) & 0xF)
+                : ((data >> ((7 - i) * 4)) & 0xF);
+
+        bool isTransparent = colIdx == 0;
+
+        if (!zDepthInit && (isTransparent || zDepth < lineZ[idx]))
+            continue;
+
+        lineGfx[idx] = palette | colIdx;
+        lineZ[idx]   = isTransparent ? 0 : zDepth;
+    }
+}
+
 void Aq32Video::drawLine(int line) {
     if (line < 0 || line >= activeHeight)
         return;
@@ -40,57 +59,46 @@ void Aq32Video::drawLine(int line) {
     }
 
     // Render bitmap/tile layer
-    uint8_t lineGfx[512];
-    uint8_t lineZ[512];
     {
+        bool tileMode = (videoCtrl & VCTRL_GFX_TILEMODE) != 0;
+        bool bmWrap   = (videoCtrl & VCTRL_BM_WRAP) != 0;
+
         if ((videoCtrl & VCTRL_GFX_EN) == 0) {
             for (int i = 0; i < 320; i++) {
                 lineGfx[i] = 0;
+                lineZ[i]   = 0;
             }
+
         } else {
-            if ((videoCtrl & VCTRL_GFX_TILEMODE) == 0) {
-                unsigned idx = (-(videoScrX1 & 7)) & 511;
-                unsigned col = videoScrX1 >> 3;
+            unsigned numLayers = 1;
+            if (tileMode && (videoCtrl & VCTRL_LAYER2_EN) != 0)
+                numLayers = 2;
 
-                // Bitmap mode 4bpp
-                int bmline = (line + videoScrY1) % 200;
-                for (int i = 0; i < 41; i++) {
-                    unsigned patOffs = (bmline * 40 + col) * 4;
+            for (unsigned layer = 0; layer < numLayers; layer++) {
+                unsigned scrX     = layer == 0 ? videoScrX1 : videoScrX2;
+                unsigned scrY     = layer == 0 ? videoScrY1 : videoScrY2;
+                unsigned tileLine = (line + scrY);
+                unsigned idx      = (-(scrX & 7)) & 511;
+                unsigned row      = ((tileLine & 255) >> 3) & 31;
+                unsigned col      = scrX >> 3;
 
-                    // Next column
-                    col = (col + 1) % 40;
-
-                    for (int n = 0; n < 4; n++) {
-                        uint8_t data = videoRam[patOffs + n];
-                        {
-                            uint8_t val = data >> 4;
-                            val |= 0x10;
-                            lineGfx[idx++] = val;
-                            idx &= 511;
-                        }
-                        {
-                            uint8_t val = data & 0xF;
-                            val |= 0x10;
-                            lineGfx[idx++] = val;
-                            idx &= 511;
-                        }
-                    }
+                unsigned bmLine = tileLine;
+                if (bmWrap) {
+                    if (bmLine >= 400)
+                        bmLine -= 400;
+                    else if (bmLine >= 200)
+                        bmLine -= 200;
+                } else {
+                    bmLine = tileLine & 255;
                 }
 
-            } else {
-                for (int layer = 0; layer < 2; layer++) {
-                    if (layer == 1 && (videoCtrl & VCTRL_LAYER2_EN) == 0)
-                        break;
+                for (int i = 0; i < 41; i++) {
+                    bool     hFlip   = false;
+                    uint8_t  palette = 0x10;
+                    unsigned zDepth  = 2;
+                    unsigned patOffs = 0;
 
-                    unsigned scrX     = layer == 0 ? videoScrX1 : videoScrX2;
-                    unsigned scrY     = layer == 0 ? videoScrY1 : videoScrY2;
-                    unsigned tileLine = (line + scrY) & 255;
-                    unsigned idx      = (-(scrX & 7)) & 511;
-                    unsigned row      = (tileLine >> 3) & 31;
-                    unsigned col      = scrX >> 3;
-
-                    // Tile mode
-                    for (int i = 0; i < 41; i++) {
+                    if (tileMode) {
                         // Tilemap is 64x32 (2 bytes per entry)
                         unsigned tilemapOffset = (layer == 0 ? 0x7000 : 0x6000) | (row << 7) | (col << 1);
 
@@ -99,54 +107,72 @@ void Aq32Video::drawLine(int line) {
 
                         unsigned tileIdx = entry & 1023;
                         bool     prio    = (entry & (1 << 10)) != 0;
-                        bool     hFlip   = (entry & (1 << 11)) != 0;
-                        bool     vFlip   = (entry & (1 << 12)) != 0;
-                        uint8_t  palette = (entry >> 9) & 0x70;
+                        hFlip            = (entry & (1 << 11)) != 0;
+                        bool vFlip       = (entry & (1 << 12)) != 0;
+                        palette          = (entry >> 9) & 0x70;
 
-                        unsigned patOffs = (tileIdx << 5) | ((tileLine & 7) << 2);
+                        patOffs = (tileIdx << 5) | ((tileLine & 7) << 2);
                         if (vFlip)
                             patOffs ^= (7 << 2);
 
-                        // Next column
-                        col = (col + 1) & 63;
+                        zDepth = ((layer + 2) << 1) | (prio ? 1 : 0);
 
-                        unsigned depth = ((layer + 2) << 1) | (prio ? 1 : 0);
-
-                        for (int n = 0; n < 4; n++) {
-                            int m = n;
-                            if (hFlip)
-                                m ^= 3;
-
-                            uint8_t data = videoRam[patOffs + m];
-
-                            if (!hFlip) {
-                                unsigned colIdx = data >> 4;
-                                if (layer == 0 || (colIdx != 0 && depth >= lineZ[idx])) {
-                                    lineZ[idx]   = (colIdx == 0) ? 0 : depth;
-                                    lineGfx[idx] = palette | colIdx;
-                                }
-                                idx = (idx + 1) & 511;
-                            }
-                            {
-                                unsigned colIdx = data & 0xF;
-                                if (layer == 0 || (colIdx != 0 && depth >= lineZ[idx])) {
-                                    lineZ[idx]   = (colIdx == 0) ? 0 : depth;
-                                    lineGfx[idx] = palette | colIdx;
-                                }
-                                idx = (idx + 1) & 511;
-                            }
-                            if (hFlip) {
-                                unsigned colIdx = data >> 4;
-                                if (layer == 0 || (colIdx != 0 && depth >= lineZ[idx])) {
-                                    lineZ[idx]   = (colIdx == 0) ? 0 : depth;
-                                    lineGfx[idx] = palette | colIdx;
-                                }
-                                idx = (idx + 1) & 511;
-                            }
-                        }
+                    } else {
+                        patOffs = bmLine * 160 + col * 4;
                     }
+
+                    uint32_t data =
+                        (videoRam[(patOffs + 0) & 0x7FFF] << 24) |
+                        (videoRam[(patOffs + 1) & 0x7FFF] << 16) |
+                        (videoRam[(patOffs + 2) & 0x7FFF] << 8) |
+                        (videoRam[(patOffs + 3) & 0x7FFF] << 0);
+
+                    if (!tileMode && !bmWrap && (col >= 40 || row >= 25)) {
+                        data = 0;
+                    }
+
+                    renderer(idx, data, hFlip, palette, zDepth, layer == 0);
+
+                    // Next column
+                    col = (col + 1) & 63;
+
+                    if (bmWrap && col >= 40)
+                        col = 0;
                 }
             }
+
+            // if ((videoCtrl & VCTRL_GFX_TILEMODE) == 0) {
+            //     unsigned idx = (-(videoScrX1 & 7)) & 511;
+            //     unsigned col = videoScrX1 >> 3;
+
+            //     // Bitmap mode 4bpp
+            //     int bmline = (line + videoScrY1) % 200;
+            //     for (int i = 0; i < 41; i++) {
+            //         unsigned patOffs = (bmline * 40 + col) * 4;
+
+            //         // Next column
+            //         col = (col + 1) % 40;
+
+            //         for (int n = 0; n < 4; n++) {
+            //             uint8_t data = videoRam[patOffs + n];
+            //             {
+            //                 uint8_t val = data >> 4;
+            //                 val |= 0x10;
+            //                 lineGfx[idx++] = val;
+            //                 idx &= 511;
+            //             }
+            //             {
+            //                 uint8_t val = data & 0xF;
+            //                 val |= 0x10;
+            //                 lineGfx[idx++] = val;
+            //                 idx &= 511;
+            //             }
+            //         }
+            //     }
+
+            // } else {
+
+            // }
         }
 
         // Render sprites

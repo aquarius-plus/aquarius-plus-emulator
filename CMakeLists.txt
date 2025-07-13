@@ -84,6 +84,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     esp32/FpgaCores/AquariusPlus/CoreAquariusPlus.cpp
     esp32/FpgaCores/Aquarius32/CoreAquarius32.cpp
     esp32/FpgaCores/FpgaCore.cpp
+    esp32/FpgaCores/KbHcEmu.cpp
     esp32/DisplayOverlay/DisplayOverlay.cpp
     esp32/DisplayOverlay/Menu.cpp
     esp32/DisplayOverlay/Menus.cpp

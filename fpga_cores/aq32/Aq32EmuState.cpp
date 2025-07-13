@@ -33,6 +33,13 @@
 #define REG_ESPCTRL       0x02000
 #define REG_ESPDATA       0x02004
 #define REG_KEYBUF        0x02010
+#define REG_HCTRL         0x02014
+#define REG_KEYS_L        0x02018
+#define REG_KEYS_H        0x0201C
+#define REG_GAMEPAD1_L    0x02018
+#define REG_GAMEPAD1_H    0x0201C
+#define REG_GAMEPAD2_L    0x02018
+#define REG_GAMEPAD2_H    0x0201C
 #define REG_VCTRL         0x02040
 #define REG_VLINE         0x02048
 #define REG_VIRQLINE      0x0204C
@@ -104,7 +111,10 @@ public:
     Aq32Video            video;
     Aq32FmSynth          fmsynth;
     Aq32Pcm              pcm;
-    uint8_t              keybMatrix[8] = {0};
+    uint64_t             keybMatrix = 0;
+    uint64_t             gamePad1   = 0;
+    uint64_t             gamePad2   = 0;
+    uint16_t             handCtrl   = 0xFFFF;
     std::deque<uint16_t> kbBuf;
     const unsigned       kbBufSize  = 16;
     unsigned             audioLeft  = 0;
@@ -164,7 +174,7 @@ public:
         cpu.dataRead32  = [this](uint32_t addr) { return _memRead32(addr); };
         cpu.instrRead   = [this](uint32_t addr) { return (uint32_t)memRead(addr); };
 
-        memset(keybMatrix, 0xFF, sizeof(keybMatrix));
+        memset(&keybMatrix, 0xFF, sizeof(keybMatrix));
         memcpy(bootRom, bootrom_bin, bootrom_bin_len);
         loadConfig();
         reset();
@@ -269,9 +279,30 @@ public:
                 break;
             }
 
+            case CMD_SET_HCTRL: {
+                if (txBuf.size() == 1 + 2) {
+                    memcpy(&handCtrl, &txBuf[1], 2);
+                }
+                break;
+            }
+
             case CMD_WRITE_KBBUF16: {
                 if (txBuf.size() == 1 + 2 && kbBuf.size() < kbBufSize) {
                     kbBuf.push_back(txBuf[1] | (txBuf[2] << 8));
+                }
+                break;
+            }
+
+            case CMD_WRITE_GAMEPAD1: {
+                if (txBuf.size() == 1 + 8) {
+                    memcpy(&gamePad1, &txBuf[1], 8);
+                }
+                break;
+            }
+
+            case CMD_WRITE_GAMEPAD2: {
+                if (txBuf.size() == 1 + 8) {
+                    memcpy(&gamePad2, &txBuf[1], 8);
                 }
                 break;
             }
@@ -394,6 +425,20 @@ public:
                     kbBuf.pop_front();
             }
             return result;
+        } else if (addr == REG_HCTRL) {
+            return handCtrl;
+        } else if (addr == REG_KEYS_L) {
+            return (unsigned)(keybMatrix >> 32);
+        } else if (addr == REG_KEYS_H) {
+            return (unsigned)(keybMatrix & 0xFFFFFFFFU);
+        } else if (addr == REG_GAMEPAD1_L) {
+            return (unsigned)(gamePad1 >> 32);
+        } else if (addr == REG_GAMEPAD1_H) {
+            return (unsigned)(gamePad1 & 0xFFFFFFFFU);
+        } else if (addr == REG_GAMEPAD2_L) {
+            return (unsigned)(gamePad2 >> 32);
+        } else if (addr == REG_GAMEPAD2_H) {
+            return (unsigned)(gamePad2 & 0xFFFFFFFFU);
         } else if (addr == REG_VCTRL) {
             return video.videoCtrl;
         } else if (addr == REG_VLINE) {
@@ -488,7 +533,6 @@ public:
             video.videoCtrl = val & 0xFF;
         } else if (addr == REG_VLINE) {
         } else if (addr == REG_VIRQLINE) {
-            video.videoIrqLine = val & 0xFF;
         } else if (addr == REG_VSCRX1) {
             video.videoScrX1 = val & 0x1FF;
         } else if (addr == REG_VSCRY1) {
@@ -496,7 +540,8 @@ public:
         } else if (addr == REG_VSCRX2) {
             video.videoScrX2 = val & 0x1FF;
         } else if (addr == REG_VSCRY2) {
-            video.videoScrY2 = val & 0xFF;
+            video.videoScrY2   = val & 0xFF;
+            video.videoIrqLine = val & 0xFF;
         } else if (addr == REG_MTIME) {
             uint64_t mtime = getMtime();
             setMtime((mtime & ~(uint64_t)0xFFFFFFFFU) | val);

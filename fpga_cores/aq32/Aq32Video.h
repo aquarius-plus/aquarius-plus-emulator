@@ -12,6 +12,7 @@ public:
         VCTRL_GFX_TILEMODE = (1 << 4),
         VCTRL_SPR_EN       = (1 << 5),
         VCTRL_LAYER2_EN    = (1 << 6),
+        VCTRL_BM_WRAP      = (1 << 7),
     };
 
     Aq32Video();
@@ -47,4 +48,10 @@ public:
     uint8_t  videoScrY2   = 0; // Tile layer 2 vertical scroll register
 
     uint16_t screen[activeWidth * activeHeight];
+
+private:
+    void renderer(unsigned &idx, uint32_t data, bool hFlip, unsigned palette, unsigned zDepth, bool zDepthInit);
+
+    uint8_t lineGfx[512];
+    uint8_t lineZ[512];
 };
