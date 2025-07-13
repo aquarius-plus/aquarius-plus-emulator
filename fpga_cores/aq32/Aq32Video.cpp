@@ -78,7 +78,7 @@ void Aq32Video::drawLine(int line) {
                 unsigned scrX     = layer == 0 ? videoScrX1 : videoScrX2;
                 unsigned scrY     = layer == 0 ? videoScrY1 : videoScrY2;
                 unsigned tileLine = (line + scrY);
-                unsigned idx      = (-(scrX & 7)) & 511;
+                unsigned idx      = (0 - (scrX & 7)) & 511;
                 unsigned row      = ((tileLine & 255) >> 3) & 31;
                 unsigned col      = scrX >> 3;
 
