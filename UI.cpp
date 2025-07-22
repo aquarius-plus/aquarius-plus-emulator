@@ -280,8 +280,9 @@ public:
                 }
 
                 // Update screen
-                {
+                if (emuState) {
                     int w, h;
+
                     emuState->getVideoSize(w, h);
                     if (w != textureWidth || h != textureHeight) {
                         if (texture) {
@@ -611,7 +612,10 @@ public:
                     update = true;
                 }
                 if (update) {
-                    FpgaCore::get()->mouseReport((int)pos.x, (int)pos.y, buttonMask, (int)io.MouseWheel, true);
+                    auto core = FpgaCore::get();
+                    if (core) {
+                        core->mouseReport((int)pos.x, (int)pos.y, buttonMask, (int)io.MouseWheel, true);
+                    }
                 }
             }
             allowTyping = ImGui::IsWindowFocused();

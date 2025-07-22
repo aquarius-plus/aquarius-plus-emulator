@@ -156,5 +156,6 @@ void EmuState::rxQueuePushData(const void *_p, size_t size) {
 }
 
 void esp_restart() {
-    FpgaCore::loadAqPlus();
+    void loadStartupCore();
+    loadStartupCore();
 }

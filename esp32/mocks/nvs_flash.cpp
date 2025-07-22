@@ -58,3 +58,11 @@ esp_err_t nvs_set_blob(nvs_handle_t handle, const char *key, const void *value, 
     config->nvs_blobs.insert_or_assign(key, std::vector<uint8_t>((const uint8_t *)value, (const uint8_t *)value + length));
     return ESP_OK;
 }
+
+esp_err_t nvs_get_str(nvs_handle_t handle, const char *key, char *out_value, size_t *length) {
+    return nvs_get_blob(handle, key, out_value, length);
+}
+
+esp_err_t nvs_set_str(nvs_handle_t handle, const char *key, const char *value) {
+    return nvs_set_blob(handle, key, value, strlen(value) + 1);
+}
