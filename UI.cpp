@@ -40,6 +40,7 @@ public:
     bool                first          = true;
     int                 emulationSpeed = 1;
     bool                escapePressed  = false;
+    ImVec2              menuBarSize;
 
     void start(const std::string &typeInStr) override {
         auto config = Config::instance();
@@ -135,6 +136,23 @@ public:
 
         if (allowTyping && scancode <= 255) {
             Keyboard::instance()->handleScancode(scancode, keyDown);
+        }
+    }
+
+    void forceWindowsOnScreen() {
+        auto dispSize = ImGui::GetIO().DisplaySize;
+        for (auto wnd : GImGui->Windows) {
+            if (wnd->Hidden || wnd->IsFallbackWindow ||
+                (wnd->Flags & (ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_ChildWindow)))
+                continue;
+
+            auto size = ImMin(wnd->Size, dispSize);
+            auto pos  = ImClamp(wnd->Pos, ImVec2(0, menuBarSize.y), dispSize - size);
+
+            if (pos != wnd->Pos)
+                ImGui::SetWindowPos(wnd, pos);
+            if (size != wnd->Size)
+                ImGui::SetWindowSize(wnd, size);
         }
     }
 
@@ -309,12 +327,13 @@ public:
 
             io.FontGlobalScale = config->fontScale2x ? 2.0f : 1.0f;
 
+            forceWindowsOnScreen();
+
             ImGui_ImplSDLRenderer2_NewFrame();
             ImGui_ImplSDL2_NewFrame();
             ImGui::NewFrame();
             ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
 
-            ImVec2 menuBarSize;
             if (ImGui::BeginMainMenuBar()) {
                 menuBarSize = ImGui::GetWindowSize();
 

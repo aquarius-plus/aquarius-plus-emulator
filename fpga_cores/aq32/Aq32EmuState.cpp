@@ -790,7 +790,7 @@ public:
             {
                 auto data = memRead(cpu.pc, false);
                 auto str  = instrToString((uint32_t)data, cpu.pc);
-                ImGui::Text("%08X %s", (unsigned)data, str.c_str());
+                ImGui::Text("%08X %-30s", (unsigned)data, str.c_str());
             }
 
             ImGui::Separator();
