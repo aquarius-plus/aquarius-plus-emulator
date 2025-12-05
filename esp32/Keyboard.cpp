@@ -672,25 +672,33 @@ public:
 
         if (ch == 0x1C) {
             // Delay for 100ms
+#ifndef EMULATOR
             vTaskDelay(pdMS_TO_TICKS(100));
+#endif
             return;
         }
         if (ch == 0x1D) {
             // Delay for 500ms
+#ifndef EMULATOR
             vTaskDelay(pdMS_TO_TICKS(500));
+#endif
             return;
         }
         if (ch == 0x1E) {
             // Reset
             core->resetCore();
+#ifndef EMULATOR
             vTaskDelay(pdMS_TO_TICKS(500));
+#endif
             return;
         }
         if (ch > '~')
             return;
 
         core->keyChar(ch, false, 0);
+#ifndef EMULATOR
         vTaskDelay(pdMS_TO_TICKS(10));
+#endif
     }
 };
 
