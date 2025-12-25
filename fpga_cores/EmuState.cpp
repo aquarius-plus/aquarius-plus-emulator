@@ -12,10 +12,17 @@ void EmuState::loadCore(const std::string &_name) {
 
     std::string name;
 
+    auto colonPos = _name.find(':', 0);
+    if (colonPos == std::string::npos) {
+        name = _name;
+    } else {
+        name = _name.substr(colonPos + 1);
+    }
+
     // Normalize passed name
     {
         std::vector<std::string> result;
-        splitPath(_name, result);
+        splitPath(name, result);
         if (result.empty())
             return;
 
@@ -31,6 +38,8 @@ void EmuState::loadCore(const std::string &_name) {
         curEmuState = newAqmsEmuState();
     } else if (name == "aq32.core") {
         curEmuState = newAq32EmuState();
+    } else if (name == "aqua-8.core") {
+        curEmuState = newAqua8EmuState();
     }
 }
 

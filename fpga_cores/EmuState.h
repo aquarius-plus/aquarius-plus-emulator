@@ -57,6 +57,7 @@ protected:
 std::shared_ptr<EmuState> newAqpEmuState();
 std::shared_ptr<EmuState> newAqmsEmuState();
 std::shared_ptr<EmuState> newAq32EmuState();
+std::shared_ptr<EmuState> newAqua8EmuState();
 
 static inline uint32_t col12_to_col32(uint16_t col444) {
     unsigned r4 = (col444 >> 8) & 0xF;

@@ -70,6 +70,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     fpga_cores/aq32/cpu/riscv.cpp
     fpga_cores/aq32/cpu/riscv_util.cpp
 
+    fpga_cores/aqua-8/Aqua8EmuState.cpp
+
     esp32/main.cpp
     esp32/FPGA.cpp
     esp32/Keyboard.cpp
