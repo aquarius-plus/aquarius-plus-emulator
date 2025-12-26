@@ -26,23 +26,31 @@
 #define HCYCLES_PER_LINE   (455)
 #define HCYCLES_PER_SAMPLE (162)
 
-#define BASE_BOOTROM   0x00000
-#define REG_ESPCTRL    0x02000
-#define REG_ESPDATA    0x02004
-#define REG_KEYBUF     0x02010
-#define REG_HCTRL      0x02014
-#define REG_KEYS_L     0x02018
-#define REG_KEYS_H     0x0201C
-#define REG_GAMEPAD1_L 0x02018
-#define REG_GAMEPAD1_H 0x0201C
-#define REG_GAMEPAD2_L 0x02018
-#define REG_GAMEPAD2_H 0x0201C
-#define BASE_PALETTE   0x20000
-#define BASE_VRAM      0x28000
-#define BASE_VRAM4BIT  0x30000
-#define BASE_MAINRAM   0x80000
-
-// #define ALLOW_UNALIGNED
+#define BASE_BOOTROM       0x00000
+#define REG_ESPCTRL        0x02000
+#define REG_ESPDATA        0x02004
+#define REG_KEYBUF         0x02010
+#define REG_HCTRL          0x02014
+#define REG_KEYS_L         0x02018
+#define REG_KEYS_H         0x0201C
+#define REG_GAMEPAD1_L     0x02018
+#define REG_GAMEPAD1_H     0x0201C
+#define REG_GAMEPAD2_L     0x02018
+#define REG_GAMEPAD2_H     0x0201C
+#define BASE_PALETTE       0x20000
+#define BASE_REG_POSX      0x20020
+#define BASE_REG_POSY      0x20024
+#define BASE_REG_COLOR     0x20028
+#define BASE_REG_REMAP_T   0x2002C
+#define BASE_REG_REMAP     0x20030
+#define BASE_REG_CLIP_RECT 0x20040
+#define BASE_REG_FLAGS     0x20044
+#define BASE_REG_WR1BPP    0x20048
+#define BASE_REG_WR4BPP    0x2004C
+#define BASE_REG_PAGE      0x20050
+#define BASE_VRAM          0x28000
+#define BASE_VRAM4BIT      0x30000
+#define BASE_MAINRAM       0x80000
 
 #ifdef GDB_ENABLE
 static std::string bufToHex(const void *buf, unsigned size) {
@@ -102,8 +110,22 @@ public:
     int                  curLineStepsRemaining = 0;
     uint64_t             mtimecmp              = 0;
     uint64_t             mtimeDiff             = 0;
-    alignas(4) uint8_t videoRam[32 * 1024]; // Video RAM
-    uint16_t videoPalette[16] = {0};        // Video palette
+
+    struct {
+        uint16_t palette[16]; // Video palette
+        uint16_t posx;
+        uint16_t posy;
+        uint8_t  color;
+        uint16_t remap_t;
+        uint8_t  remap[16];
+        uint8_t  clip_x1;
+        uint8_t  clip_x2;
+        uint8_t  clip_y1;
+        uint8_t  clip_y2;
+        uint8_t  flags;
+        uint8_t  page;
+        alignas(4) uint8_t vram[32 * 1024]; // Video RAM
+    } video;
 
 #ifdef GDB_ENABLE
     // GDB interface
@@ -153,8 +175,11 @@ public:
         memset(&keybMatrix, 0xFF, sizeof(keybMatrix));
         memcpy(bootRom, bootrom_bin, bootrom_bin_len);
 
-        memset(videoPalette, 0, sizeof(videoPalette));
-        memset(videoRam, 0, sizeof(videoRam));
+        memset(&video, 0, sizeof(video));
+        video.clip_x1 = 0;
+        video.clip_x2 = 192;
+        video.clip_y1 = 0;
+        video.clip_y2 = 160;
 
         loadConfig();
         reset();
@@ -236,7 +261,7 @@ public:
 
         for (int y = 0; y < 160; y++) {
             for (int x = 0; x < 192; x++) {
-                uint32_t color = col12_to_col32(videoPalette[(videoRam[y * 96 + x / 2] >> ((x & 1) * 4)) & 0xF]);
+                uint32_t color = col12_to_col32(video.palette[(video.vram[y * 96 + x / 2] >> ((x & 1) * 4)) & 0xF]);
 
                 for (int j = 0; j < 3; j++) {
                     for (int i = 0; i < 3; i++) {
@@ -299,6 +324,30 @@ public:
     bool pasteIsDone() override {
         std::lock_guard lock(mutex);
         return typeInStr.empty();
+    }
+
+    void setPixel(unsigned x, unsigned y, unsigned color) {
+        color = video.remap[color & 0xF] & 0xF;
+        if (x >= 192 || x < video.clip_x1 || x >= video.clip_x2)
+            return;
+        if (y >= 160 || y < video.clip_y1 || y >= video.clip_y2)
+            return;
+
+        unsigned loc = y * 192 + x;
+        uint8_t *p   = &video.vram[loc / 2];
+
+        if (loc & 1) {
+            *p = (*p & 0xF) | (color << 4);
+        } else {
+            *p = (*p & 0xF0) | color;
+        }
+    }
+
+    void writeDone() {
+        if (video.flags & 1)
+            video.posy++;
+        if (video.flags & 2)
+            video.posx += 8;
     }
 
     uint8_t _memRead8(uint32_t addr) {
@@ -422,16 +471,37 @@ public:
             return (unsigned)(gamePad2 >> 32);
         } else if (addr == REG_GAMEPAD2_H) {
             return (unsigned)(gamePad2 & 0xFFFFFFFFU);
-        } else if (addr >= BASE_PALETTE && addr < (BASE_PALETTE + sizeof(videoPalette))) {
+        } else if (addr >= BASE_PALETTE && addr < (BASE_PALETTE + sizeof(video.palette))) {
             // Palette (16b)
-            uint16_t val = videoPalette[(addr & (sizeof(videoPalette) - 1)) / 2];
+            uint16_t val = video.palette[(addr & (sizeof(video.palette) - 1)) / 2];
             return val | (val << 16);
-        } else if (addr >= BASE_VRAM && addr < (BASE_VRAM + sizeof(videoRam))) {
+        } else if ((addr & ~3) == BASE_REG_POSX) {
+            return video.posx << 16;
+        } else if ((addr & ~3) == BASE_REG_POSY) {
+            return video.posy << 16;
+        } else if (addr == BASE_REG_COLOR) {
+            return video.color;
+        } else if (addr == BASE_REG_REMAP_T) {
+            return video.remap_t;
+        } else if (addr >= BASE_REG_REMAP && addr < (BASE_REG_REMAP + sizeof(video.remap))) {
+            uint8_t val = video.remap[addr & (sizeof(video.remap) - 1)];
+            return val | (val << 16);
+        } else if ((addr & ~3) == BASE_REG_CLIP_RECT) {
+            return (video.clip_y2 << 24) | (video.clip_y1 << 16) | (video.clip_x2 << 8) | (video.clip_x1 << 0);
+        } else if (addr == BASE_REG_FLAGS) {
+            return video.flags;
+        } else if (addr == BASE_REG_WR1BPP) {
+            return 0;
+        } else if (addr == BASE_REG_WR4BPP) {
+            return 0;
+        } else if (addr == BASE_REG_PAGE) {
+            return video.page;
+        } else if (addr >= BASE_VRAM && addr < (BASE_VRAM + sizeof(video.vram))) {
             // Video RAM (8/16/32b)
-            return reinterpret_cast<uint32_t *>(videoRam)[(addr & (sizeof(videoRam) - 1)) / 4];
-        } else if (addr >= BASE_VRAM4BIT && addr < (BASE_VRAM4BIT + 2 * sizeof(videoRam))) {
+            return reinterpret_cast<uint32_t *>(video.vram)[(addr & (sizeof(video.vram) - 1)) / 4];
+        } else if (addr >= BASE_VRAM4BIT && addr < (BASE_VRAM4BIT + 2 * sizeof(video.vram))) {
             // Video RAM (8/16/32b)
-            uint16_t val16 = reinterpret_cast<uint16_t *>(videoRam)[(addr & (2 * sizeof(videoRam) - 1)) / 4];
+            uint16_t val16 = reinterpret_cast<uint16_t *>(video.vram)[(addr & (2 * sizeof(video.vram) - 1)) / 4];
             uint32_t val32 = ((val16 & 0xF000) << 12) |
                              ((val16 & 0x0F00) << 8) |
                              ((val16 & 0x00F0) << 4) |
@@ -455,15 +525,51 @@ public:
             }
         } else if (addr == REG_KEYBUF) {
             kbBuf.clear();
-        } else if (addr >= BASE_PALETTE && addr < (BASE_PALETTE + sizeof(videoPalette))) {
+        } else if (addr >= BASE_PALETTE && addr < (BASE_PALETTE + sizeof(video.palette))) {
             // Palette (16b)
-            videoPalette[(addr & (sizeof(videoPalette) - 1)) / 2] = ((val >> 16) | (val & 0xFFFF)) & 0xFFF;
-        } else if (addr >= BASE_VRAM && addr < (BASE_VRAM + sizeof(videoRam))) {
+            unsigned idx       = (addr & (sizeof(video.palette) - 1)) / 2;
+            video.palette[idx] = ((val >> 16) | (val & 0xFFFF)) & 0xFFF;
+        } else if ((addr & ~3) == BASE_REG_POSX) {
+            video.posx = val >> 16;
+        } else if ((addr & ~3) == BASE_REG_POSY) {
+            video.posy = val >> 16;
+        } else if (addr == BASE_REG_COLOR) {
+            video.color = val & 0xF;
+        } else if (addr == BASE_REG_REMAP_T) {
+            video.remap_t = val & 0xFFFF;
+        } else if (addr >= BASE_REG_REMAP && addr < (BASE_REG_REMAP + sizeof(video.remap))) {
+            unsigned idx     = addr & (sizeof(video.remap) - 1);
+            video.remap[idx] = val & 0xF;
+        } else if ((addr & ~3) == BASE_REG_CLIP_RECT) {
+            if (mask & 0x000000FF)
+                video.clip_x1 = (val >> 0) & 0xFF;
+            if (mask & 0x0000FF00)
+                video.clip_x2 = (val >> 8) & 0xFF;
+            if (mask & 0x00FF0000)
+                video.clip_y1 = (val >> 16) & 0xFF;
+            if (mask & 0xFF000000)
+                video.clip_y2 = (val >> 24) & 0xFF;
+        } else if (addr == BASE_REG_FLAGS) {
+            video.flags = val;
+        } else if (addr == BASE_REG_WR1BPP) {
+            for (int i = 0; i < 8; i++) {
+                if (val & (1 << i))
+                    setPixel(video.posx + i, video.posy, video.color);
+            }
+            writeDone();
+
+        } else if (addr == BASE_REG_WR4BPP) {
+            for (int i = 0; i < 8; i++) {
+            }
+
+        } else if (addr == BASE_REG_PAGE) {
+            video.page = val;
+        } else if (addr >= BASE_VRAM && addr < (BASE_VRAM + sizeof(video.vram))) {
             // Video RAM (8/16/32b)
-            auto p = &reinterpret_cast<uint32_t *>(videoRam)[(addr & (sizeof(videoRam) - 1)) / 4];
+            auto p = &reinterpret_cast<uint32_t *>(video.vram)[(addr & (sizeof(video.vram) - 1)) / 4];
             *p     = (*p & ~mask) | (val & mask);
-        } else if (addr >= BASE_VRAM4BIT && addr < (BASE_VRAM4BIT + 2 * sizeof(videoRam))) {
-            uint16_t *p     = &reinterpret_cast<uint16_t *>(videoRam)[(addr & (2 * sizeof(videoRam) - 1)) / 4];
+        } else if (addr >= BASE_VRAM4BIT && addr < (BASE_VRAM4BIT + 2 * sizeof(video.vram))) {
+            uint16_t *p     = &reinterpret_cast<uint16_t *>(video.vram)[(addr & (2 * sizeof(video.vram) - 1)) / 4];
             uint16_t  val16 = *p;
             uint32_t  val32 =
                 ((val16 & 0xF000) << 12) |
@@ -579,9 +685,9 @@ public:
                     clipper.Begin(128);
                     while (clipper.Step()) {
                         for (int row_n = clipper.DisplayStart; row_n < clipper.DisplayEnd; row_n++) {
-                            int r = (videoPalette[row_n] >> 8) & 0xF;
-                            int g = (videoPalette[row_n] >> 4) & 0xF;
-                            int b = (videoPalette[row_n] >> 0) & 0xF;
+                            int r = (video.palette[row_n] >> 8) & 0xF;
+                            int g = (video.palette[row_n] >> 4) & 0xF;
+                            int b = (video.palette[row_n] >> 0) & 0xF;
 
                             ImGui::TableNextRow();
                             ImGui::TableNextColumn();
@@ -591,7 +697,7 @@ public:
                             ImGui::TableNextColumn();
                             ImGui::Text("%2d", row_n & 15);
                             ImGui::TableNextColumn();
-                            ImGui::Text("%03X", videoPalette[row_n]);
+                            ImGui::Text("%03X", video.palette[row_n]);
                             ImGui::TableNextColumn();
                             ImGui::Text("%2d", r);
                             ImGui::TableNextColumn();
