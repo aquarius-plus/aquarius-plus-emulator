@@ -139,7 +139,7 @@ if (APPLE)
 endif()
 
 if (MSVC)
-    target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE /W3 /WX)
+    target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE /W3)
     target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
         windows
         windows/SDL2-2.0.20/include
