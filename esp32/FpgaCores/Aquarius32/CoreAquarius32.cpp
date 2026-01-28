@@ -146,7 +146,6 @@ public:
     }
 
     void keyChar(uint8_t ch, bool isRepeat, uint8_t modifiers) override {
-        RecursiveMutexLock lock(mutex);
         aqpWriteKeybBuffer16(
             (0 << 14) | // Character
             (isRepeat ? (1 << 12) : 0) |
@@ -161,14 +160,13 @@ public:
             if (dx < 0 || dy < 0)
                 return;
 
-            dy -= 32;
             dy /= 2;
             dx /= 2;
         }
 
         float sensitivity = 1.0f / (float)mouseSensitivityDiv;
         mouseX            = std::max(0.0f, std::min(319.0f, absPos ? dx : (mouseX + (float)(dx * sensitivity))));
-        mouseY            = std::max(0.0f, std::min(199.0f, absPos ? dy : (mouseY + (float)(dy * sensitivity))));
+        mouseY            = std::max(0.0f, std::min(239.0f, absPos ? dy : (mouseY + (float)(dy * sensitivity))));
         mouseButtons      = buttonMask;
         mousePresent      = true;
         mouseWheel        = mouseWheel + dWheel;
@@ -198,6 +196,12 @@ public:
 
         uint16_t x = (uint16_t)mouseX;
         uint8_t  y = (uint8_t)mouseY;
+
+        if (strcmp(getCoreInfo()->name, "aqua-8") == 0) {
+            x = std::max(0, (int)(((mouseX - 10) / 300.0f) * 200.0f));
+            y = ((mouseY / 240.0f) * 160.0f);
+        }
+
         up->txWrite(x & 0xFF);
         up->txWrite(x >> 8);
         up->txWrite(y);

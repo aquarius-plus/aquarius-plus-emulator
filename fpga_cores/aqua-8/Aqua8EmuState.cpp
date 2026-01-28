@@ -113,8 +113,8 @@ public:
 
     struct {
         uint16_t palette[16]; // Video palette
-        uint16_t posx;
-        uint16_t posy;
+        int16_t  posx;
+        int16_t  posy;
         uint8_t  color;
         uint16_t remap_t;
         uint8_t  remap[16];
@@ -177,9 +177,9 @@ public:
 
         memset(&video, 0, sizeof(video));
         video.clip_x1 = 0;
-        video.clip_x2 = 192;
+        video.clip_x2 = 200;
         video.clip_y1 = 0;
-        video.clip_y2 = 160;
+        video.clip_y2 = 163;
 
         loadConfig();
         reset();
@@ -260,12 +260,12 @@ public:
         memset(pixels, 0, 480 * pitch);
 
         for (int y = 0; y < 160; y++) {
-            for (int x = 0; x < 192; x++) {
-                uint32_t color = col12_to_col32(video.palette[(video.vram[y * 96 + x / 2] >> ((x & 1) * 4)) & 0xF]);
+            for (int x = 0; x < 200; x++) {
+                uint32_t color = col12_to_col32(video.palette[(video.vram[y * 100 + x / 2] >> ((x & 1) * 4)) & 0xF]);
 
                 for (int j = 0; j < 3; j++) {
                     for (int i = 0; i < 3; i++) {
-                        ((uint32_t *)((uintptr_t)pixels + (y * 3 + j) * pitch))[32 + x * 3 + i] = color;
+                        ((uint32_t *)((uintptr_t)pixels + (y * 3 + j) * pitch))[20 + x * 3 + i] = color;
                     }
                 }
             }
@@ -326,14 +326,16 @@ public:
         return typeInStr.empty();
     }
 
-    void setPixel(unsigned x, unsigned y, unsigned color) {
-        color = video.remap[color & 0xF] & 0xF;
-        if (x >= 192 || x < video.clip_x1 || x >= video.clip_x2)
+    void setPixel(int x, int y, unsigned color) {
+        if (video.remap_t & (1 << color))
             return;
-        if (y >= 160 || y < video.clip_y1 || y >= video.clip_y2)
+        color = video.remap[color & 0xF] & 0xF;
+        if (x >= 200 || x < video.clip_x1 || x >= video.clip_x2)
+            return;
+        if (y >= 163 || y < video.clip_y1 || y >= video.clip_y2)
             return;
 
-        unsigned loc = y * 192 + x;
+        unsigned loc = y * 200 + x;
         uint8_t *p   = &video.vram[loc / 2];
 
         if (loc & 1) {
@@ -560,7 +562,9 @@ public:
 
         } else if (addr == BASE_REG_WR4BPP) {
             for (int i = 0; i < 8; i++) {
+                setPixel(video.posx + i, video.posy, (val >> (i * 4)) & 0xF);
             }
+            writeDone();
 
         } else if (addr == BASE_REG_PAGE) {
             video.page = val;

@@ -293,7 +293,7 @@ void riscv::emulate() {
     }
 
     if (this->trap) {
-        printf("Trap: %u  pc: %08X\n", this->trap, this->pc);
+        // printf("Trap: %u  pc: %08X\n", this->trap, this->pc);
 
         if (this->trap == TRAP_INSTR_ILLEGAL)
             this->mtval = instr;
