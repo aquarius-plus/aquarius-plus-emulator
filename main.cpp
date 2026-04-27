@@ -100,5 +100,9 @@ int main(int argc, char *argv[]) {
 
     UI::instance()->start(typeInStr);
     config->save();
+
+#ifdef __APPLE__
+    _exit(0);   // skip static destructors
+#endif
     return 0;
 }
