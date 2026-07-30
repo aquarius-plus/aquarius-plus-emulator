@@ -199,7 +199,7 @@ public:
 
         if (strcmp(getCoreInfo()->name, "aqua-8") == 0) {
             x = std::max(0, (int)(((mouseX - 10) / 300.0f) * 200.0f));
-            y = ((mouseY / 240.0f) * 160.0f);
+            y = (uint8_t)((mouseY / 240.0f) * 160.0f);
         }
 
         up->txWrite(x & 0xFF);
