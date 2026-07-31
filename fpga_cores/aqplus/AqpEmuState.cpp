@@ -45,8 +45,18 @@ public:
     bool showMemEdit      = false;
     int  memEditMemSelect = 0;
     bool showIoRegsWindow = false;
+    bool hasSaved         = false;
 
-    MemoryEditor memEdit;
+    struct MemoryArea {
+        MemoryArea(const std::string &_name, void *_data, size_t _size)
+            : name(_name), data(_data), size(_size) {
+        }
+        std::string name;
+        void       *data;
+        size_t      size;
+    };
+    std::vector<MemoryArea> memAreas;
+    MemoryEditor            memEdit;
 
     // IO space
     uint8_t audioDAC    = 0;               // $EC   : Audio DAC sample
@@ -90,8 +100,12 @@ public:
         reset(true);
     }
 
-    virtual ~AqpEmuState() {
+    void unloading() override {
         saveConfig();
+    }
+
+    virtual ~AqpEmuState() {
+        unloading();
     }
 
     void reset(bool cold) override {
@@ -128,6 +142,9 @@ public:
     }
 
     void saveConfig() {
+        if (hasSaved)
+            return;
+        hasSaved  = true;
         auto root = cJSON_CreateObject();
         cJSON_AddBoolToObject(root, "showMemEdit", showMemEdit);
         cJSON_AddNumberToObject(root, "memEditMemSelect", memEditMemSelect);
@@ -646,16 +663,6 @@ public:
     }
 
     void dbgWndMemEdit(bool *p_open) {
-        struct MemoryArea {
-            MemoryArea(const std::string &_name, void *_data, size_t _size)
-                : name(_name), data(_data), size(_size) {
-            }
-            std::string name;
-            void       *data;
-            size_t      size;
-        };
-        static std::vector<MemoryArea> memAreas;
-
         if (memAreas.empty()) {
             memAreas.emplace_back("Z80 memory", nullptr, 0x10000);
             memAreas.emplace_back("Screen RAM", video.screenRam, sizeof(video.screenRam));

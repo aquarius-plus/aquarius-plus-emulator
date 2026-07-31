@@ -148,6 +148,7 @@ public:
     bool showMemEdit       = false;
     int  memEditMemSelect  = 0;
     bool enableBreakpoints = false;
+    bool hasSaved          = false;
 
     struct Breakpoint {
         uint32_t    addr = 0;
@@ -157,7 +158,16 @@ public:
 
     std::vector<Breakpoint> breakpoints;
 
-    MemoryEditor memEdit;
+    struct MemoryArea {
+        MemoryArea(const std::string &_name, void *_data, size_t _size)
+            : name(_name), data(_data), size(_size) {
+        }
+        std::string name;
+        void       *data;
+        size_t      size;
+    };
+    std::vector<MemoryArea> memAreas;
+    MemoryEditor            memEdit;
 
     Aq32EmuState() {
         coreType         = 2;
@@ -186,8 +196,12 @@ public:
 #endif
     }
 
-    virtual ~Aq32EmuState() {
+    void unloading() override {
         saveConfig();
+    }
+
+    virtual ~Aq32EmuState() {
+        unloading();
 #ifdef GDB_ENABLE
         stopping = true;
         gdbThread.join();
@@ -237,6 +251,9 @@ public:
     }
 
     void saveConfig() {
+        if (hasSaved)
+            return;
+        hasSaved  = true;
         auto root = cJSON_CreateObject();
         cJSON_AddBoolToObject(root, "showMemEdit", showMemEdit);
         // cJSON_AddNumberToObject(root, "memEditMemSelect", memEditMemSelect);
@@ -899,16 +916,6 @@ public:
     }
 
     void dbgWndMemEdit(bool *p_open) {
-        struct MemoryArea {
-            MemoryArea(const std::string &_name, void *_data, size_t _size)
-                : name(_name), data(_data), size(_size) {
-            }
-            std::string name;
-            void       *data;
-            size_t      size;
-        };
-        static std::vector<MemoryArea> memAreas;
-
         if (memAreas.empty()) {
             memAreas.emplace_back("Memory", nullptr, 0x100000);
             memAreas.emplace_back("Text RAM", video.textRam, sizeof(video.textRam));

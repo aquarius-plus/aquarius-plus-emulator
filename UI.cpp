@@ -93,9 +93,11 @@ public:
         FPGA::instance()->init();
         FreeRtosMock_init();
         app_main();
-        auto emuState = EmuState::get();
-        if (emuState)
-            emuState->pasteText(typeInStr);
+        {
+            auto emuState = EmuState::get();
+            if (emuState)
+                emuState->pasteText(typeInStr);
+        }
         mainLoop();
         FreeRtosMock_deinit();
         EmuState::loadCore("");

@@ -8,6 +8,8 @@ std::shared_ptr<EmuState> EmuState::get() {
 }
 
 void EmuState::loadCore(const std::string &_name) {
+    if (curEmuState)
+        curEmuState->unloading();
     curEmuState = nullptr;
 
     std::string name;

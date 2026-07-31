@@ -28,6 +28,8 @@ public:
     virtual void dbgMenu()    = 0;
     virtual void dbgWindows() = 0;
 
+    virtual void unloading() {}
+
 protected:
     // Core info
     uint8_t coreType         = 0;
